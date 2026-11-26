@@ -1,0 +1,33 @@
+{
+  "kind": "live_model_semantic_eval",
+  "status": "incomplete",
+  "model": "gemini-3.1-pro-preview",
+  "requested_cases": [
+    "official_purchase_lifecycle",
+    "lifecycle_ambiguity",
+    "resolved_cross_context_boundary",
+    "clean_valid_requirement",
+    "official_amount_response_type"
+  ],
+  "completed_cases": [],
+  "summary": {
+    "automated_expected": 0,
+    "automated_detected": 0,
+    "manual_expected": 0,
+    "manual_candidates_retrieved": 0,
+    "raw_candidates": 0,
+    "overlapping_evidence_candidates": 0,
+    "merged_candidates": 0,
+    "unexpected_findings": 0,
+    "rejected_candidates": 0,
+    "manual_review_pending": false
+  },
+  "cases": [],
+  "interruption": {
+    "case": "official_purchase_lifecycle",
+    "provider_error": {
+      "type": "LLMError",
+      "message": "Gemini request failed for SpecificationReview (HTTP 429, rate limit or quota exceeded, attempts=1). Gemini requested a retry after 42972s. Check the Google AI Studio limits for project and model gemini-3.1-pro-preview, then retry when quota is available or use a project with sufficient quota."
+    }
+  }
+}

@@ -6,9 +6,11 @@
 - [x] Review the latest report against the six scenarios in the expert review's critical-defects summary. Record the results and check the cited quotations against the original text.
 - [x] Add regression cases for the five missed official scenarios and the explicit response-type control. The [evaluation suite](evals/README.md#official-report-regressions) passes its offline check.
 - [x] Run the six new regression cases with pinned Gemini Flash-Lite and save the [results](reports/official_regressions_flash_lite.json). The first two cases completed before a rate limit, and the remaining four completed in a follow-up run.
-- [ ] Improve detection of the purchase lifecycle and monthly-spend gaps and exact quotation of the refund event. Re-run the evidence checks and the amount-type control.
+- [x] Add dedicated data-source review and an exact-quote repair attempt. The [targeted rerun](reports/official_regressions_flash_lite_targeted.json) found the monthly-spend and refund gaps with source evidence. The amount-type control passed.
+- [ ] Improve detection and classification of the purchase lifecycle trigger. Flash-Lite produced related findings but the expected ambiguity and evidence did not match in the rerun.
 - [x] Verify extraction roles for the API contract and response examples. The [coverage run](reports/api_extraction_coverage_flash_lite.json) classified all five previously excluded blocks as analyzed.
-- [ ] Repeat the lifecycle case and clean controls on a pinned Flash-Lite model. If the miss persists, compare a stronger pinned model on the same evidence and save the evaluation outputs.
+- [x] Repeat the lifecycle fixtures and clean controls with pinned Flash-Lite. Save the [official follow-up](reports/official_regressions_flash_lite_followup.json), [targeted rerun](reports/official_regressions_flash_lite_targeted.json) and [historical controls](reports/lifecycle_controls_lite.json).
+- [ ] Complete the same-evidence comparison with a more capable Gemini model. Four attempts stopped before scoring because of provider errors. See the run records below.
 - [x] Remove 189 generated pytest artifacts from Git tracking, ignore future test-output directories and commit the retry/resume changes with their tests and documentation.
 
 ## Official report review
@@ -47,6 +49,14 @@ All six synthetic regression cases completed on `gemini-3.5-flash-lite`. The [sa
 | Amount response type | Passed. Individual review covered the response field, and no finding was confirmed. |
 
 The harness scored two of three automatically scored issues and retrieved one of two cases requiring manual review. There were zero unexpected confirmed findings. The manual assessment above records the scope of the settings-read finding and the reason the refund candidate could not be confirmed.
+
+### Follow-up after review changes
+
+The [six-case follow-up](reports/official_regressions_flash_lite_followup.json) detected both existing conflicts, confirmed the refund gap with exact source evidence and passed the amount-type control. Its lifecycle findings used the completeness criterion, so they did not match the expected ambiguity. The [historical lifecycle rerun](reports/lifecycle_controls_lite.json) produced no candidate. Both clean controls in that run had zero confirmed findings.
+
+A subsequent [four-case rerun](reports/official_regressions_flash_lite_targeted.json) used the dedicated data-source pass. Manual review confirmed separate findings for the missing settings read and the missing source of monthly spending. The refund gap cited the actual event fields, and the amount-type control passed. Flash-Lite reported a timing conflict between the purchase goal and the dispatch deadline. That finding did not cite the named transaction stages or distinguish which stage triggers notification, so the lifecycle ambiguity remains open.
+
+The stronger-model attempts completed zero cases. Gemini 3.5 Flash and 3.7 Flash returned HTTP 503 after retries. Gemini 3.1 Pro Preview returned HTTP 429 with a retry interval longer than the configured wait budget. Gemini 2.5 Pro returned HTTP 404. No comparative score is available. [3.5 Flash](reports/lifecycle_controls_flash.json) ? [3.7 Flash](reports/lifecycle_controls_flash_37.json) ? [3.1 Pro Preview](reports/lifecycle_controls_pro.json) ? [2.5 Pro](reports/lifecycle_controls_pro_25.json)
 
 ## Baseline and reproducible checks
 
