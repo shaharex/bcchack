@@ -1,13 +1,45 @@
+# Local environments and secrets
 .venv/
+venv/
 .env
 .env.*
 !.env.example
+
+# Python bytecode, tools, and build output
 __pycache__/
-.pytest_cache/
-/.pytest-tmp-*/
+*.py[cod]
 *.egg-info/
 build/
 dist/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Test and coverage output
+.pytest_cache/
+/.pytest-tmp-*/
+/pytest-of-*/
 .coverage
+.coverage.*
+/htmlcov/
+
+# Local validator and evaluation output
 .requirements-report-*
 .*.gemini-checkpoint.sqlite3*
+/eval-result.json
+/official-regressions.json
+
+# Editor, operating-system, and temporary files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+*.tmp
+*.swp
+*~
+/tmp/
+/temp/
