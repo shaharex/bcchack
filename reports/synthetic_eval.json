@@ -1,0 +1,309 @@
+{
+  "kind": "live_model_semantic_eval",
+  "status": "complete",
+  "model": "gemini-3.5-flash-lite",
+  "requested_cases": [
+    "conflicting_limits",
+    "resolved_cross_context_boundary",
+    "clean_valid_requirement",
+    "purchase_vs_processing_date",
+    "http_200_error_vs_400",
+    "missing_read_operation",
+    "missing_data_dependencies",
+    "lifecycle_ambiguity"
+  ],
+  "completed_cases": [
+    "conflicting_limits",
+    "resolved_cross_context_boundary",
+    "clean_valid_requirement",
+    "purchase_vs_processing_date",
+    "http_200_error_vs_400",
+    "missing_read_operation",
+    "missing_data_dependencies",
+    "lifecycle_ambiguity"
+  ],
+  "summary": {
+    "automated_expected": 4,
+    "automated_detected": 2,
+    "manual_expected": 2,
+    "manual_candidates_retrieved": 0,
+    "raw_candidates": 6,
+    "overlapping_evidence_candidates": 4,
+    "merged_candidates": 3,
+    "unexpected_findings": 0,
+    "rejected_candidates": 0,
+    "manual_review_pending": true
+  },
+  "cases": [
+    {
+      "case": "conflicting_limits",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": false,
+          "manual_review": false,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "resolved_cross_context_boundary",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "clean_valid_requirement",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "purchase_vs_processing_date",
+      "candidate_metrics": {
+        "raw_candidate_count": 2,
+        "grounded_candidate_count": 2,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 1,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 2,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Определение месяца расходов",
+          "explanation": "В спецификации обнаружено противоречие между правилом определения месяца расходов по дате совершения покупки в часовом поясе Алматы и примером в приёмке, где покупка от 31 января попадает в февральский счётчик из-за даты обработки. Это приводит к неопределенности в расчётах.",
+          "recommendation": "Уточнить правило в разделе приёмки или расчёта, чтобы дата совершения покупки однозначно определяла месяц расходов независимо от даты обработки, либо явно разрешить влияние даты обработки.",
+          "passages": [
+            "processing-example",
+            "purchase-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "purchase-rule",
+              "quote": "Месяц расходов определяется по дате совершения покупки в часовом поясе Алматы."
+            },
+            {
+              "passage": "processing-example",
+              "quote": "Покупка совершена 31 января и обработана 1 февраля; сумма включается в февральский счётчик."
+            }
+          ]
+        },
+        {
+          "criterion": "consistency",
+          "subject": "Атрибуция времени для покупки на стыке месяцев",
+          "explanation": "Покупка совершена в конце месяца (31 января), а обработана в начале следующего месяца (1 февраля) в часовом поясе Алматы. По одному правилу — Включение суммы в январский месяц расходов на основе даты совершения покупки., по другому — Включение суммы в февральский счётчик на основе даты обработки..",
+          "recommendation": "Уточнить спецификацию, зафиксировав единый подход: либо использовать дату совершения покупки для всех случаев, либо явно описать исключения для даты обработки.",
+          "passages": [
+            "processing-example",
+            "purchase-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "purchase-rule",
+              "quote": "Месяц расходов определяется по дате совершения покупки в часовом поясе Алматы."
+            },
+            {
+              "passage": "processing-example",
+              "quote": "Покупка совершена 31 января и обработана 1 февраля; сумма включается в февральский счётчик."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Определение месяца расходов",
+            "explanation": "В спецификации обнаружено противоречие между правилом определения месяца расходов по дате совершения покупки в часовом поясе Алматы и примером в приёмке, где покупка от 31 января попадает в февральский счётчик из-за даты обработки. Это приводит к неопределенности в расчётах.",
+            "recommendation": "Уточнить правило в разделе приёмки или расчёта, чтобы дата совершения покупки однозначно определяла месяц расходов независимо от даты обработки, либо явно разрешить влияние даты обработки.",
+            "passages": [
+              "processing-example",
+              "purchase-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "purchase-rule",
+                "quote": "Месяц расходов определяется по дате совершения покупки в часовом поясе Алматы."
+              },
+              {
+                "passage": "processing-example",
+                "quote": "Покупка совершена 31 января и обработана 1 февраля; сумма включается в февральский счётчик."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "http_200_error_vs_400",
+      "candidate_metrics": {
+        "raw_candidate_count": 4,
+        "grounded_candidate_count": 4,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 3,
+        "merged_candidate_count": 3
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "HTTP статус при некорректной сумме порога",
+          "explanation": "Запрос с некорректной суммой порога По одному правилу — HTTP 400, по другому — HTTP 200.",
+          "recommendation": "Привести пример ответа в документации в соответствие с правилом валидации, изменив HTTP 200 на HTTP 400.",
+          "passages": [
+            "error-example",
+            "invalid-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "invalid-rule",
+              "quote": "Если сумма порога некорректна, сервис возвращает HTTP 400."
+            },
+            {
+              "passage": "error-example",
+              "quote": "Пример ответа для некорректной суммы: HTTP 200"
+            },
+            {
+              "passage": "error-example",
+              "quote": "Пример ответа для некорректной суммы: HTTP 200 {\"result\":\"ERROR\",\"message\":\"Проверьте сумму\"}."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "HTTP статус при некорректной сумме порога",
+            "explanation": "Запрос с некорректной суммой порога По одному правилу — HTTP 400, по другому — HTTP 200.",
+            "recommendation": "Привести пример ответа в документации в соответствие с правилом валидации, изменив HTTP 200 на HTTP 400.",
+            "passages": [
+              "error-example",
+              "invalid-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "invalid-rule",
+                "quote": "Если сумма порога некорректна, сервис возвращает HTTP 400."
+              },
+              {
+                "passage": "error-example",
+                "quote": "Пример ответа для некорректной суммы: HTTP 200"
+              },
+              {
+                "passage": "error-example",
+                "quote": "Пример ответа для некорректной суммы: HTTP 200 {\"result\":\"ERROR\",\"message\":\"Проверьте сумму\"}."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "missing_read_operation",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": false,
+          "manual_review": true,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "missing_data_dependencies",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": false,
+          "manual_review": true,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "lifecycle_ambiguity",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "ambiguity",
+          "detected_with_expected_passages": false,
+          "manual_review": false,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    }
+  ]
+}

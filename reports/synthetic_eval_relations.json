@@ -1,0 +1,409 @@
+{
+  "kind": "live_model_semantic_eval",
+  "status": "complete",
+  "model": "gemini-3.5-flash-lite",
+  "requested_cases": [
+    "conflicting_limits",
+    "purchase_vs_processing_date",
+    "http_200_error_vs_400",
+    "missing_read_operation",
+    "missing_data_dependencies",
+    "resolved_cross_context_boundary",
+    "lifecycle_ambiguity",
+    "clean_valid_requirement"
+  ],
+  "completed_cases": [
+    "conflicting_limits",
+    "purchase_vs_processing_date",
+    "http_200_error_vs_400",
+    "missing_read_operation",
+    "missing_data_dependencies",
+    "resolved_cross_context_boundary",
+    "lifecycle_ambiguity",
+    "clean_valid_requirement"
+  ],
+  "summary": {
+    "automated_expected": 4,
+    "automated_detected": 3,
+    "manual_expected": 2,
+    "manual_candidates_retrieved": 2,
+    "raw_candidates": 11,
+    "overlapping_evidence_candidates": 6,
+    "merged_candidates": 6,
+    "unexpected_findings": 0,
+    "rejected_candidates": 0,
+    "manual_review_pending": true
+  },
+  "cases": [
+    {
+      "case": "conflicting_limits",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 1,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Коллизия лимита уведомлений и безусловной отправки при изменении порога",
+          "explanation": "Совместное применение лимита уведомлений (не более одного в месяц) и правила отправки уведомления при достижении измененного порога независимо от ранее отправленных. В течение календарного месяца на одну карту может быть отправлено не более одного уведомления. После изменения порога его следующее достижение всегда вызывает новое уведомление, независимо от ранее отправленных. При изменении порога и его достижении в том же календарном месяце, когда уже было отправлено одно уведомление, выполнение требования о новом уведомлении нарушит месячный лимит.",
+          "recommendation": "Добавить исключение в правило лимитов, разрешающее отправку сверх месячного лимита в случае изменения порога, либо скоординировать логику ограничений.",
+          "passages": [
+            "changed-limit",
+            "monthly-cap"
+          ],
+          "evidence": [
+            {
+              "passage": "monthly-cap",
+              "quote": "На одну карту отправляется не более одного уведомления за календарный месяц."
+            },
+            {
+              "passage": "changed-limit",
+              "quote": "После изменения порога его следующее достижение всегда вызывает новое уведомление, независимо от ранее отправленных уведомлений."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Коллизия лимита уведомлений и безусловной отправки при изменении порога",
+            "explanation": "Совместное применение лимита уведомлений (не более одного в месяц) и правила отправки уведомления при достижении измененного порога независимо от ранее отправленных. В течение календарного месяца на одну карту может быть отправлено не более одного уведомления. После изменения порога его следующее достижение всегда вызывает новое уведомление, независимо от ранее отправленных. При изменении порога и его достижении в том же календарном месяце, когда уже было отправлено одно уведомление, выполнение требования о новом уведомлении нарушит месячный лимит.",
+            "recommendation": "Добавить исключение в правило лимитов, разрешающее отправку сверх месячного лимита в случае изменения порога, либо скоординировать логику ограничений.",
+            "passages": [
+              "changed-limit",
+              "monthly-cap"
+            ],
+            "evidence": [
+              {
+                "passage": "monthly-cap",
+                "quote": "На одну карту отправляется не более одного уведомления за календарный месяц."
+              },
+              {
+                "passage": "changed-limit",
+                "quote": "После изменения порога его следующее достижение всегда вызывает новое уведомление, независимо от ранее отправленных уведомлений."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "purchase_vs_processing_date",
+      "candidate_metrics": {
+        "raw_candidate_count": 3,
+        "grounded_candidate_count": 3,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 2,
+        "merged_candidate_count": 2
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Месяц расходов для покупки 31 января",
+          "explanation": "Покупка совершена 31 января в часовом поясе Алматы и обработана 1 февраля. По одному правилу — Включение в январский счётчик, по другому — Включение в февральский счётчик.",
+          "recommendation": "Удалить или скорректировать пример в блоке b002, чтобы он соответствовал правилу определения месяца по дате совершения покупки в блоке b001.",
+          "passages": [
+            "processing-example",
+            "purchase-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "purchase-rule",
+              "quote": "Месяц расходов определяется по дате совершения покупки в часовом поясе Алматы."
+            },
+            {
+              "passage": "processing-example",
+              "quote": "Покупка совершена 31 января и обработана 1 февраля; сумма включается в февральский счётчик."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Месяц расходов для покупки 31 января",
+            "explanation": "Покупка совершена 31 января в часовом поясе Алматы и обработана 1 февраля. По одному правилу — Включение в январский счётчик, по другому — Включение в февральский счётчик.",
+            "recommendation": "Удалить или скорректировать пример в блоке b002, чтобы он соответствовал правилу определения месяца по дате совершения покупки в блоке b001.",
+            "passages": [
+              "processing-example",
+              "purchase-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "purchase-rule",
+                "quote": "Месяц расходов определяется по дате совершения покупки в часовом поясе Алматы."
+              },
+              {
+                "passage": "processing-example",
+                "quote": "Покупка совершена 31 января и обработана 1 февраля; сумма включается в февральский счётчик."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "http_200_error_vs_400",
+      "candidate_metrics": {
+        "raw_candidate_count": 5,
+        "grounded_candidate_count": 5,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 4,
+        "merged_candidate_count": 4
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Несоответствие статус-кода HTTP",
+          "explanation": "В тексте требований указано, что при некорректной сумме порога сервис возвращает HTTP 400, однако в примере ответа для некорректной суммы возвращается HTTP 200, что создает противоречие в поведении API.",
+          "recommendation": "Привести пример ответа в соответствие с требованием, указав код HTTP 400 вместо HTTP 200.",
+          "passages": [
+            "error-example",
+            "invalid-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "invalid-rule",
+              "quote": "Если сумма порога некорректна, сервис возвращает HTTP 400."
+            },
+            {
+              "passage": "error-example",
+              "quote": "Пример ответа для некорректной суммы: HTTP 200"
+            },
+            {
+              "passage": "error-example",
+              "quote": "Пример ответа для некорректной суммы: HTTP 200 {\"result\":\"ERROR\",\"message\":\"Проверьте сумму\"}."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Несоответствие статус-кода HTTP",
+            "explanation": "В тексте требований указано, что при некорректной сумме порога сервис возвращает HTTP 400, однако в примере ответа для некорректной суммы возвращается HTTP 200, что создает противоречие в поведении API.",
+            "recommendation": "Привести пример ответа в соответствие с требованием, указав код HTTP 400 вместо HTTP 200.",
+            "passages": [
+              "error-example",
+              "invalid-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "invalid-rule",
+                "quote": "Если сумма порога некорректна, сервис возвращает HTTP 400."
+              },
+              {
+                "passage": "error-example",
+                "quote": "Пример ответа для некорректной суммы: HTTP 200"
+              },
+              {
+                "passage": "error-example",
+                "quote": "Пример ответа для некорректной суммы: HTTP 200 {\"result\":\"ERROR\",\"message\":\"Проверьте сумму\"}."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "missing_read_operation",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 1,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "completeness",
+          "subject": "Отсутствие операции чтения порогов в API",
+          "explanation": "При открытии экрана пользователь ожидает увидеть сохраненный порог, однако спецификация описывает интерфейс только для операции сохранения POST /limits без возможности чтения. Отображение ранее сохраненного порога при открытии экрана. Доступна только операция POST /limits для сохранения нового порога. Приложение не может получить ранее сохраненный порог с сервера для отображения его при открытии экрана.",
+          "recommendation": "Добавить в контракт сервиса GET-операцию для получения сохраненного порога пользователя.",
+          "passages": [
+            "display-current",
+            "write-only"
+          ],
+          "evidence": [
+            {
+              "passage": "display-current",
+              "quote": "При открытии экрана приложение должно показать ранее сохранённый порог пользователя."
+            },
+            {
+              "passage": "write-only",
+              "quote": "Контракт сервиса содержит единственную операцию POST /limits для сохранения нового порога."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": true,
+          "manual_review": true,
+          "matched_finding": {
+            "criterion": "completeness",
+            "subject": "Отсутствие операции чтения порогов в API",
+            "explanation": "При открытии экрана пользователь ожидает увидеть сохраненный порог, однако спецификация описывает интерфейс только для операции сохранения POST /limits без возможности чтения. Отображение ранее сохраненного порога при открытии экрана. Доступна только операция POST /limits для сохранения нового порога. Приложение не может получить ранее сохраненный порог с сервера для отображения его при открытии экрана.",
+            "recommendation": "Добавить в контракт сервиса GET-операцию для получения сохраненного порога пользователя.",
+            "passages": [
+              "display-current",
+              "write-only"
+            ],
+            "evidence": [
+              {
+                "passage": "display-current",
+                "quote": "При открытии экрана приложение должно показать ранее сохранённый порог пользователя."
+              },
+              {
+                "passage": "write-only",
+                "quote": "Контракт сервиса содержит единственную операцию POST /limits для сохранения нового порога."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "missing_data_dependencies",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 1,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "completeness",
+          "subject": "Отсутствие данных о транзакциях",
+          "explanation": "Для расчёта суммы покупок по карте за текущий календарный месяц сервису необходимы данные о транзакциях или истории покупок по этой карте, однако на вход поступают только идентификатор и порог. Сервис должен вычислить сумму покупок за текущий календарный месяц. На вход подаются только идентификатор карты и порог. Сервис не имеет необходимых входных данных для выполнения расчёта суммы покупок за месяц.",
+          "recommendation": "Добавить в спецификацию требование о передаче на вход сервису истории транзакций или обеспечить получение этих данных из смежной базы данных по идентификатору карты.",
+          "passages": [
+            "available-input",
+            "calculation"
+          ],
+          "evidence": [
+            {
+              "passage": "calculation",
+              "quote": "Сервис должен вычислять сумму покупок по карте за текущий календарный месяц."
+            },
+            {
+              "passage": "available-input",
+              "quote": "На вход сервиса поступают только идентификатор карты и установленный пользователем порог."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": true,
+          "manual_review": true,
+          "matched_finding": {
+            "criterion": "completeness",
+            "subject": "Отсутствие данных о транзакциях",
+            "explanation": "Для расчёта суммы покупок по карте за текущий календарный месяц сервису необходимы данные о транзакциях или истории покупок по этой карте, однако на вход поступают только идентификатор и порог. Сервис должен вычислить сумму покупок за текущий календарный месяц. На вход подаются только идентификатор карты и порог. Сервис не имеет необходимых входных данных для выполнения расчёта суммы покупок за месяц.",
+            "recommendation": "Добавить в спецификацию требование о передаче на вход сервису истории транзакций или обеспечить получение этих данных из смежной базы данных по идентификатору карты.",
+            "passages": [
+              "available-input",
+              "calculation"
+            ],
+            "evidence": [
+              {
+                "passage": "calculation",
+                "quote": "Сервис должен вычислять сумму покупок по карте за текущий календарный месяц."
+              },
+              {
+                "passage": "available-input",
+                "quote": "На вход сервиса поступают только идентификатор карты и установленный пользователем порог."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "resolved_cross_context_boundary",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "lifecycle_ambiguity",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "ambiguity",
+          "detected_with_expected_passages": false,
+          "manual_review": false,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "clean_valid_requirement",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    }
+  ]
+}

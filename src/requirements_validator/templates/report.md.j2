@@ -1,0 +1,192 @@
+# Отчёт о проверке требований
+
+## Паспорт прогона
+
+- Документ — {{ run.document.title | md }}
+- Дата и время — {{ run.started_at.isoformat(timespec="seconds") }}
+- Модель — {{ run.model | md }}
+- Версия агента — {{ run.agent_version | md }}
+
+## Резюме для принятия решения
+
+| Показатель | Значение |
+| --- | --- |
+| Извлечено элементов спецификации | {{ run.requirements | length }} |
+| Подтверждённые дефекты | {{ run.review.findings | length }} |
+| Высокая или критическая серьёзность | {{ critical | length }} |
+| Критерии, которые нельзя оценить | {{ outcome_counts["not_assessable"] }} |
+| Неподтверждённые замечания | {{ run.review.rejected | length }} |
+| Вопросы заинтересованным сторонам | {% if run.questions is none %}не формировались{% else %}{{ run.questions | length }}{% endif %} |
+
+**Вывод о готовности:** {{ readiness }}
+
+## Покрытие документа
+
+{% if coverage is none %}
+Сведения о покрытии не формировались. Это не означает, что каждый блок документа был проанализирован.
+{% else %}
+| Блок | Раздел | Роль при анализе | Основание |
+| --- | --- | --- | --- |
+{% for item, section in coverage_rows %}
+| {{ item.block_id | md }} | {{ section | md }} | {{ coverage_kinds[item.kind] }} | {{ item.reason | md }} |
+{% for passage in item.context_passages %}
+| {{ location(passage.source) }} | {{ section | md }} | {{ coverage_kinds[passage.kind] }} | {{ passage.reason | md }} |
+{% endfor %}
+{% endfor %}
+{% endif %}
+
+## Карта требований
+
+| ID в отчёте | Тип | ID в документе | Краткая формулировка | Раздел и источник |
+| --- | --- | --- | --- | --- |
+{% for requirement in run.requirements %}
+| {{ requirement.id | md }} | {{ kinds[requirement.kind | default("atomic_requirement", true)] }} | {% if requirement.original_id %}{{ requirement.original_id.quote | md }} ({{ location(requirement.original_id) }}){% else %}Без номера{% endif %} | {{ requirement.statement | md }} | {{ requirement.section | join(" → ") | md }} ({{ location(requirement.source) }}) |
+{% else %}
+| — | — | — | Требования не извлечены | — |
+{% endfor %}
+
+## Проверка каждого требования
+
+{% for requirement in run.requirements %}
+### {{ requirement.id | md }}
+
+{{ requirement.statement | md }}
+
+Исходная цитата ({{ location(requirement.source) }})
+
+{{ requirement.source.quote | quotation }}
+
+{% set passed = evaluations[requirement.id] | selectattr("outcome", "equalto", "pass") | list %}
+{% if passed %}
+- Пройдено: {% for item in passed %}**{{ criteria[item.criterion] }}**{% if not loop.last %}, {% endif %}{% endfor %}.
+{% endif %}
+{% for item in evaluations[requirement.id] if item.outcome != "pass" %}
+- **{{ criteria[item.criterion] }}** — {{ outcomes[item.outcome] }}. {{ item.rationale | md }}{% if item.finding_ids %} ({{ item.finding_ids | join(", ") | md }}){% endif +%}
+{% else %}
+{% if not passed %}
+Оценки отсутствуют.
+{% endif %}
+{% endfor %}
+
+{% else %}
+Требования не извлечены.
+{% endfor %}
+
+## Проверка спецификации в целом
+
+{% for finding in whole %}
+- {{ finding.id | md }} — {{ finding.subject | md }}. {{ finding.explanation | md }}
+{% else %}
+Подтверждённых замечаний по спецификации в целом нет.
+{% endfor %}
+
+## Подтверждённые дефекты
+
+{% for finding in ordered %}
+### {{ finding.id | md }} — {{ finding.subject | md }}
+
+- Критерий — {{ criteria[finding.criterion] }}{% for other in finding.related_criteria %}, {{ criteria[other] }}{% endfor +%}
+{% if finding.id in decisions %}
+- Серьёзность — {{ levels[decisions[finding.id].level] }}. {{ decisions[finding.id].rationale | md }}
+{% else %}
+- Серьёзность — не определена.
+{% endif %}
+- Затронутые требования — {{ (finding.requirement_ids | join(", ") or "замечание к документу") | md }}
+{% if finding.scenario | default(none, true) %}
+- Сценарий — {{ finding.scenario.description | md }}
+- Ожидаемый исход A ({{ location(finding.evidence[finding.scenario.evidence_a]) }}) — {{ finding.scenario.expected_a | md }}
+- Ожидаемый исход B ({{ location(finding.evidence[finding.scenario.evidence_b]) }}) — {{ finding.scenario.expected_b | md }}
+{% else %}
+- Обоснование — {{ finding.explanation | md }}
+{% endif %}
+{% if show_impact[finding.id] %}
+- Влияние — {{ finding.impact | md }}
+{% endif %}
+- Требуется уточнение — {{ "да" if finding.requires_clarification else "нет" }}
+- Рекомендация — {{ finding.recommendation | md }}
+
+{% for ref in finding.evidence %}
+Доказательство ({{ location(ref) }}{% if ref.requirement_id %}, {{ ref.requirement_id | md }}{% endif %})
+
+{{ ref.quote | quotation }}
+
+{% endfor %}
+{% else %}
+Подтверждённых дефектов нет.
+{% endfor %}
+
+## Вопросы заинтересованным сторонам
+
+{% if run.questions is none %}
+Вопросы не формировались.
+{% elif question_rows %}
+| Приоритет | Связанные дефекты | Вопрос |
+| --- | --- | --- |
+{% for _, _, priority_label, item in question_rows %}
+| {{ priority_label }} | {{ item.finding_ids | join(", ") | md }} | {{ item.question | md }} |
+{% endfor %}
+{% else %}
+Вопросов нет.
+{% endif %}
+
+## Неподтверждённые замечания
+
+{% if run.review.rejected %}
+Ниже перечислены только результаты, не признанные подтверждёнными дефектами.
+
+| Статус | Критерий | Предмет | Почему не подтверждено | Затронутые требования |
+| --- | --- | --- | --- | --- |
+{% for item in run.review.rejected %}
+| {{ rejected_statuses[item.status | default("unsupported", true)] }} | {{ criteria[item.criterion] }} | {{ item.subject | md }} | {{ item.reason | md }} | {{ (item.requirement_ids | join(", ") or "—") | md }} |
+{% endfor %}
+
+{% for item in run.review.rejected if item.resolving_evidence %}
+### Проверенное основание: {{ item.subject | md }}
+
+{% for ref in item.resolving_evidence %}
+{{ location(ref) }}
+
+{{ ref.quote | quotation }}
+
+{% endfor %}
+{% endfor %}
+{% else %}
+Неподтверждённых замечаний нет.
+{% endif %}
+
+## Сводка
+
+- Требований — {{ run.requirements | length }}
+- Подтверждённых дефектов — {{ run.review.findings | length }}
+{% for level, label in levels.items() %}
+{% if level != "critical" or counts[level] %}
+- {{ label }} серьёзность — {{ counts[level] }}
+{% endif %}
+{% endfor %}
+{% if unclassified %}
+- Без оценки серьёзности — {{ unclassified }}
+{% endif %}
+- Неподтверждённых замечаний — {{ run.review.rejected | length }}
+{% for status, count in rejected_counts.items() %}
+- {{ rejected_statuses[status] }} — {{ count }}
+{% endfor %}
+
+### Критические замечания
+
+{% for finding in critical %}
+- {{ finding.id | md }} — {{ finding.subject | md }}
+{% else %}
+Подтверждённых замечаний высокой или критической серьёзности нет.
+{% endfor %}
+
+### Готовность к разработке и тестированию
+
+{{ readiness }}
+
+### Приоритетные рекомендации
+
+{% for finding in ordered %}
+1. **{{ finding.id | md }}{% if finding.id in decisions %}, {{ levels[decisions[finding.id].level] | lower }} серьёзность{% else %}, серьёзность не определена{% endif %}** — {{ finding.recommendation | md }}
+{% else %}
+Рекомендаций по подтверждённым дефектам нет.
+{% endfor %}

@@ -1,0 +1,64 @@
+{
+  "kind": "live_model_semantic_eval",
+  "status": "complete",
+  "model": "gemini-3.5-flash-lite",
+  "requested_cases": [
+    "lifecycle_ambiguity",
+    "clean_valid_requirement"
+  ],
+  "completed_cases": [
+    "lifecycle_ambiguity",
+    "clean_valid_requirement"
+  ],
+  "summary": {
+    "automated_expected": 1,
+    "automated_detected": 0,
+    "manual_expected": 0,
+    "manual_candidates_retrieved": 0,
+    "raw_candidates": 0,
+    "overlapping_evidence_candidates": 0,
+    "merged_candidates": 0,
+    "unexpected_findings": 0,
+    "rejected_candidates": 0,
+    "manual_review_pending": false
+  },
+  "cases": [
+    {
+      "case": "lifecycle_ambiguity",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "ambiguity",
+          "detected_with_expected_passages": false,
+          "manual_review": false,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "clean_valid_requirement",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    }
+  ]
+}
