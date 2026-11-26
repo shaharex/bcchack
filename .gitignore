@@ -4,8 +4,10 @@
 !.env.example
 __pycache__/
 .pytest_cache/
+/.pytest-tmp-*/
 *.egg-info/
 build/
 dist/
 .coverage
 .requirements-report-*
+.*.gemini-checkpoint.sqlite3*

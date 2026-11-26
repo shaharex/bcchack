@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -167,3 +169,64 @@ def test_mixed_table_classifies_metadata_row_without_inventing_a_requirement(llm
     (unit,), (entry,) = RequirementsExtractor(llm).extract_with_coverage(doc)
     assert unit.source.quote == "| API | Read balance |"
     assert entry.context_passages[0].source.quote == "| Author | Example |"
+
+
+@pytest.mark.parametrize("exclude_entire_table", [True, False], ids=["whole-table", "individual-rows"])
+def test_api_contract_rows_survive_table_metadata_classification(llm, exclude_entire_table):
+    facts = (
+        "| **REST type** | GET |",
+        "| **Request URL** | /alerts/limit |",
+        "| **CURL** | `curl -G https://example.test/alerts/limit` |",
+    )
+    metadata = ("| Author | Example |", "| **Request URL** | — |")
+    table = SourceBlock(id="contract", text="\n".join(("| Field | Value |", "| --- | --- |", *facts, *metadata)))
+    doc = ParsedDocument(id="api", title="API", blocks=(table,))
+    groups = [
+        {"source": {"block_id": table.id, "quote": row}, "original_id": None,
+         "atoms": [{"statement": row, "kind": "specification_fact"}]}
+        for row in facts
+    ]
+    excluded_passages = [
+        {"source": {"block_id": table.id, "quote": row}, "kind": "metadata", "reason": "General properties."}
+        for row in (*facts, *metadata)
+    ]
+    if exclude_entire_table:
+        misclassified = {"groups": [], "excluded": [
+            {"block_id": table.id, "kind": "metadata", "reason": "General properties."},
+        ]}
+    else:
+        misclassified = {"groups": groups[:1], "excluded_passages": excluded_passages[1:]}
+    corrected = {"groups": groups, "excluded_passages": excluded_passages[len(facts):]}
+    llm.generate.side_effect = [Extraction.model_validate(draft) for draft in (misclassified, corrected)]
+
+    requirements, (entry,) = RequirementsExtractor(llm).extract_with_coverage(doc)
+
+    assert [r.source.quote for r in requirements] == list(facts)
+    assert all(r.kind == "specification_fact" for r in requirements)
+    assert entry.kind == "analyzed"
+    assert [passage.source.quote for passage in entry.context_passages] == list(metadata)
+    retry_payload = json.loads(llm.generate.call_args.args[1])
+    assert retry_payload["previous_validation_error"].startswith("API contract row")
+
+
+@pytest.mark.parametrize("section", ["400. Bad Request", "HTTP 401 Unauthorized", "Пример ответа"])
+def test_json_response_example_is_retried_when_classified_as_metadata(llm, section):
+    body = '{"message":"Ошибка"}'
+    block = SourceBlock(id="body", text=f"```json\n{body}\n```", section=("REST API", section))
+    doc = ParsedDocument(id="api", title="API", blocks=(block,))
+    llm.generate.side_effect = [
+        Extraction.model_validate({"groups": [], "excluded": [
+            {"block_id": block.id, "kind": "metadata", "reason": "Illustration."},
+        ]}),
+        Extraction.model_validate({"groups": [
+            {"source": {"block_id": block.id, "first_line": 2, "last_line": 2}, "original_id": None,
+             "atoms": [{"statement": "Error response example.", "kind": "specification_fact"}]},
+        ]}),
+    ]
+
+    (requirement,), (entry,) = RequirementsExtractor(llm).extract_with_coverage(doc)
+
+    assert (requirement.source.quote, requirement.section, requirement.kind) == (body, block.section, "specification_fact")
+    assert entry.kind == "analyzed"
+    retry_payload = json.loads(llm.generate.call_args.args[1])
+    assert retry_payload["previous_validation_error"].startswith("API response example")

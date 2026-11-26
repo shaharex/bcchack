@@ -1,0 +1,51 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "scope": "Five previously excluded API blocks from the official specification",
+  "baseline": "reports/report_validated.md",
+  "coverage": [
+    {
+      "block": "L101-L114",
+      "previous_role": "metadata",
+      "current_role": "analyzed",
+      "extracted_kinds": [
+        "specification_fact",
+        "specification_fact",
+        "specification_fact",
+        "specification_fact",
+        "specification_fact"
+      ]
+    },
+    {
+      "block": "L179-L181",
+      "previous_role": "metadata",
+      "current_role": "analyzed",
+      "extracted_kinds": [
+        "specification_fact"
+      ]
+    },
+    {
+      "block": "L184-L186",
+      "previous_role": "metadata",
+      "current_role": "analyzed",
+      "extracted_kinds": [
+        "specification_fact"
+      ]
+    },
+    {
+      "block": "L191-L193",
+      "previous_role": "metadata",
+      "current_role": "analyzed",
+      "extracted_kinds": [
+        "specification_fact"
+      ]
+    },
+    {
+      "block": "L196-L198",
+      "previous_role": "metadata",
+      "current_role": "analyzed",
+      "extracted_kinds": [
+        "specification_fact"
+      ]
+    }
+  ]
+}

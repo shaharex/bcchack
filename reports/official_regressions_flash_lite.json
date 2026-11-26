@@ -1,0 +1,390 @@
+{
+  "kind": "live_model_semantic_eval",
+  "status": "complete",
+  "model": "gemini-3.5-flash-lite",
+  "requested_cases": [
+    "official_second_notification",
+    "official_purchase_month",
+    "official_settings_read",
+    "official_purchase_lifecycle",
+    "official_refund_attribution",
+    "official_amount_response_type"
+  ],
+  "completed_cases": [
+    "official_second_notification",
+    "official_purchase_month",
+    "official_settings_read",
+    "official_purchase_lifecycle",
+    "official_refund_attribution",
+    "official_amount_response_type"
+  ],
+  "summary": {
+    "automated_expected": 3,
+    "automated_detected": 2,
+    "manual_expected": 2,
+    "manual_candidates_retrieved": 1,
+    "raw_candidates": 8,
+    "overlapping_evidence_candidates": 4,
+    "merged_candidates": 4,
+    "unexpected_findings": 0,
+    "rejected_candidates": 1,
+    "manual_review_pending": true
+  },
+  "cases": [
+    {
+      "case": "official_second_notification",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 1,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Конфликт ограничения частоты уведомлений и правила сброса истории при смене порога",
+          "explanation": "При изменении порога накопленная сумма сохраняется и становится ниже нового порога в том же календарном месяце, в котором уже было отправлено уведомление для старого порога. Уведомление не отправляется повторно, так как на карту приходится максимум одно уведомление в месяц. Следующее достижение вызывает уведомление независимо от истории предыдущей настройки. Невозможно однозначно определить, должно ли правило отправки максимум одного уведомления в месяц блокировать отправку при смене порога.",
+          "recommendation": "Дополнить правило изменения порога исключением, уточняющим приоритет лимита уведомлений за календарный месяц.",
+          "passages": [
+            "monthly-cap",
+            "threshold-change"
+          ],
+          "evidence": [
+            {
+              "passage": "monthly-cap",
+              "quote": "На карту приходится максимум одно уведомление о достижении порога за календарный месяц."
+            },
+            {
+              "passage": "threshold-change",
+              "quote": "Если она ниже нового порога, следующее достижение вызывает уведомление независимо от истории предыдущей настройки."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Конфликт ограничения частоты уведомлений и правила сброса истории при смене порога",
+            "explanation": "При изменении порога накопленная сумма сохраняется и становится ниже нового порога в том же календарном месяце, в котором уже было отправлено уведомление для старого порога. Уведомление не отправляется повторно, так как на карту приходится максимум одно уведомление в месяц. Следующее достижение вызывает уведомление независимо от истории предыдущей настройки. Невозможно однозначно определить, должно ли правило отправки максимум одного уведомления в месяц блокировать отправку при смене порога.",
+            "recommendation": "Дополнить правило изменения порога исключением, уточняющим приоритет лимита уведомлений за календарный месяц.",
+            "passages": [
+              "monthly-cap",
+              "threshold-change"
+            ],
+            "evidence": [
+              {
+                "passage": "monthly-cap",
+                "quote": "На карту приходится максимум одно уведомление о достижении порога за календарный месяц."
+              },
+              {
+                "passage": "threshold-change",
+                "quote": "Если она ниже нового порога, следующее достижение вызывает уведомление независимо от истории предыдущей настройки."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_purchase_month",
+      "candidate_metrics": {
+        "raw_candidate_count": 5,
+        "grounded_candidate_count": 5,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 4,
+        "merged_candidate_count": 4
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Определение месяца расходов",
+          "explanation": "Покупка совершена 31 января, а проведена 1 февраля. По одному правилу — Январский счётчик должен вырасти, по другому — Февральский счётчик вырос на 4 000 ₸.",
+          "recommendation": "Устранить противоречие, приведя пример в таблице приёмки в соответствие с правилом определения месяца по дате совершения покупки, либо изменить общее правило, если приоритет имеет дата проведения.",
+          "passages": [
+            "month-end-acceptance",
+            "purchase-date-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "purchase-date-rule",
+              "quote": "Месяц расходов определяется по дате совершения покупки"
+            },
+            {
+              "passage": "purchase-date-rule",
+              "quote": "Месяц расходов определяется по дате совершения покупки по времени Алматы."
+            },
+            {
+              "passage": "purchase-date-rule",
+              "quote": "В расходы входят проведённые покупки."
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "| Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03 | Февральский счётчик вырос на 4 000 ₸ |"
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "Покупка 31 января в 23:58 на 4 000 ₸"
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03"
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "Провести 1 февраля в 00:03"
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "Февральский счётчик вырос на 4 000 ₸"
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Определение месяца расходов",
+            "explanation": "Покупка совершена 31 января, а проведена 1 февраля. По одному правилу — Январский счётчик должен вырасти, по другому — Февральский счётчик вырос на 4 000 ₸.",
+            "recommendation": "Устранить противоречие, приведя пример в таблице приёмки в соответствие с правилом определения месяца по дате совершения покупки, либо изменить общее правило, если приоритет имеет дата проведения.",
+            "passages": [
+              "month-end-acceptance",
+              "purchase-date-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "purchase-date-rule",
+                "quote": "Месяц расходов определяется по дате совершения покупки"
+              },
+              {
+                "passage": "purchase-date-rule",
+                "quote": "Месяц расходов определяется по дате совершения покупки по времени Алматы."
+              },
+              {
+                "passage": "purchase-date-rule",
+                "quote": "В расходы входят проведённые покупки."
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "| Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03 | Февральский счётчик вырос на 4 000 ₸ |"
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "Покупка 31 января в 23:58 на 4 000 ₸"
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03"
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "Провести 1 февраля в 00:03"
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "Февральский счётчик вырос на 4 000 ₸"
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_settings_read",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 1,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "completeness",
+          "subject": "Отсутствие метода чтения настроек",
+          "explanation": "Приложение отображает сохранённый порог на экране, но интеграция через REST API определяет только метод POST /alerts/limit для сохранения настроек без предоставления возможности чтения текущих значений. При открытии экрана отображаются сохранённые данные. Настройки читаются и сохраняются через REST API, но метод GET для чтения отсутствует. Приложение не может получить сохранённый порог для отображения на экране.",
+          "recommendation": "Добавить спецификацию метода GET для чтения настроек карты в REST API.",
+          "passages": [
+            "integration",
+            "save-contract",
+            "screen-values"
+          ],
+          "evidence": [
+            {
+              "passage": "screen-values",
+              "quote": "При открытии экрана отображаются сохранённый порог, состояние переключателя и сумма расходов за текущий месяц."
+            },
+            {
+              "passage": "integration",
+              "quote": "Приложение читает и сохраняет настройки карты через дочернюю спецификацию REST API."
+            },
+            {
+              "passage": "save-contract",
+              "quote": "POST /alerts/limit: заменить настройку карты и вернуть результат сохранения."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": true,
+          "manual_review": true,
+          "matched_finding": {
+            "criterion": "completeness",
+            "subject": "Отсутствие метода чтения настроек",
+            "explanation": "Приложение отображает сохранённый порог на экране, но интеграция через REST API определяет только метод POST /alerts/limit для сохранения настроек без предоставления возможности чтения текущих значений. При открытии экрана отображаются сохранённые данные. Настройки читаются и сохраняются через REST API, но метод GET для чтения отсутствует. Приложение не может получить сохранённый порог для отображения на экране.",
+            "recommendation": "Добавить спецификацию метода GET для чтения настроек карты в REST API.",
+            "passages": [
+              "integration",
+              "save-contract",
+              "screen-values"
+            ],
+            "evidence": [
+              {
+                "passage": "screen-values",
+                "quote": "При открытии экрана отображаются сохранённый порог, состояние переключателя и сумма расходов за текущий месяц."
+              },
+              {
+                "passage": "integration",
+                "quote": "Приложение читает и сохраняет настройки карты через дочернюю спецификацию REST API."
+              },
+              {
+                "passage": "save-contract",
+                "quote": "POST /alerts/limit: заменить настройку карты и вернуть результат сохранения."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_purchase_lifecycle",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "ambiguity",
+          "detected_with_expected_passages": false,
+          "manual_review": false,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_refund_attribution",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 1,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": false,
+          "manual_review": true,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": [
+        {
+          "criterion": "completeness",
+          "subject": "Отсутствие связи возврата с исходной операцией покупки",
+          "reason": "Точная цитата не найдена в блоке b002",
+          "passages": [
+            "recorded-purchases",
+            "refund-rule"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "official_amount_response_type",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": [],
+      "individual_review_passage": "response-field",
+      "individual_review_passage_reviewed": true,
+      "control_passed": true
+    }
+  ],
+  "attempts": [
+    {
+      "status": "incomplete",
+      "requested_cases": [
+        "official_second_notification",
+        "official_purchase_month",
+        "official_settings_read",
+        "official_purchase_lifecycle",
+        "official_refund_attribution",
+        "official_amount_response_type"
+      ],
+      "completed_cases": [
+        "official_second_notification",
+        "official_purchase_month"
+      ],
+      "interruption": {
+        "case": "official_settings_read",
+        "provider_error": {
+          "type": "LLMError",
+          "message": "Gemini request failed for FocusedReview (HTTP 429, rate limit or quota exceeded, attempts=3). Gemini requested a retry after 58s. Check the Google AI Studio limits for project and model gemini-3.5-flash-lite, then retry when quota is available or use a project with sufficient quota."
+        }
+      }
+    },
+    {
+      "status": "complete",
+      "requested_cases": [
+        "official_settings_read",
+        "official_purchase_lifecycle",
+        "official_refund_attribution",
+        "official_amount_response_type"
+      ],
+      "completed_cases": [
+        "official_settings_read",
+        "official_purchase_lifecycle",
+        "official_refund_attribution",
+        "official_amount_response_type"
+      ]
+    }
+  ]
+}

@@ -13,7 +13,7 @@ from requirements_validator.models import EvidenceReference, Finding, QualityCri
 from requirements_validator.parsers import DocumentParseError, FileDocumentParser
 from requirements_validator.pipeline import AnalysisPipeline
 from requirements_validator.report import MarkdownReportGenerator, quotation
-from requirements_validator.reviewers import FocusedReview, IndividualReview, RelationReviews, SpecificationReview
+from requirements_validator.reviewers import DependencyReview, FocusedReview, IndividualReviews, QuoteRepairs, RelationReviews, SpecificationReview
 from requirements_validator.severity import RubricSeverityClassifier, SeverityRule
 from requirements_validator.source import Anchor, EvidenceError, SourceIndex
 
@@ -120,8 +120,9 @@ def cli_env(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("extension", ["md", "pdf"])
+@pytest.mark.parametrize("interrupted", [False, True])
 def test_cli_full_mocked_pipeline(
-    cli_env, monkeypatch, llm, assessments, extension, skipped_comparisons, skipped_relations,
+    cli_env, monkeypatch, capsys, llm, batch_assessments, extension, interrupted, skipped_comparisons, skipped_relations,
 ):
     src = cli_env / f"input.{extension}"
     output = cli_env / "report.md"
@@ -151,14 +152,18 @@ def test_cli_full_mocked_pipeline(
                 {"block_id": block["id"], "kind": "metadata", "reason": "Заголовок или метаданные."}
                 for block in data["blocks"] if block["id"] != source["id"]
             ]})
-        if schema is IndividualReview:
-            extracted_ids.append(data["target"]["id"])
-            return assessments()
+        if schema is IndividualReviews:
+            extracted_ids.extend(target["id"] for target in data["targets"])
+            return batch_assessments(extracted_ids)
         if schema is FocusedReview:
             return skipped_comparisons[0]
         if schema is RelationReviews:
             return skipped_relations
+        if schema is DependencyReview:
+            return DependencyReview(dependency_gaps=())
         if schema is SpecificationReview:
+            if interrupted and calls == [Extraction, IndividualReviews, SpecificationReview]:
+                raise LLMError("HTTP 429. Gemini requested a retry after 48703s.")
             req = data["requirements"][0]
             candidate = {
                 "criterion": "completeness", "subject": "Условие выдачи", "explanation": "Триггер выдачи не задан.",
@@ -168,6 +173,9 @@ def test_cli_full_mocked_pipeline(
             invented = {**candidate, "subject": "Неверная цитата", "evidence": [
                 {**candidate["evidence"][0], "quote": "Этого в источнике нет"}]}
             return SpecificationReview.model_validate({"findings": [candidate, invented]})
+        if schema is QuoteRepairs:
+            assert len(data["invalid_citations"]) == 1
+            return QuoteRepairs(repairs=())
         if schema is Verdicts:
             assert len(data["candidates"]) == 1
             return schema.model_validate({"verdicts": [{
@@ -182,11 +190,19 @@ def test_cli_full_mocked_pipeline(
 
     llm.generate.side_effect = respond
     monkeypatch.setattr(cli, "GeminiClient", lambda settings: nullcontext(llm))
-    assert cli.main(["--input", str(src), "--output", str(output)]) == 0
+    args = ["--input", str(src), "--output", str(output)]
+    if interrupted:
+        output.write_text("previous report", encoding="utf-8")
+        assert cli.main(args) == 1
+        assert "Progress saved" in capsys.readouterr().err
+        assert output.read_text(encoding="utf-8") == "previous report"
+        assert calls == [Extraction, IndividualReviews, SpecificationReview]
+        calls.clear()
+    assert cli.main(args) == 0
     rendered = output.read_text(encoding="utf-8")
     assert calls == [
-        Extraction, IndividualReview, IndividualReview, SpecificationReview,
-        *[FocusedReview] * len(skipped_comparisons), RelationReviews, Verdicts, QuestionDrafts,
+        *([] if interrupted else [Extraction, IndividualReviews]), SpecificationReview, DependencyReview,
+        *[FocusedReview] * len(skipped_comparisons), RelationReviews, QuoteRepairs, Verdicts, QuestionDrafts,
     ]
     assert "test-tag" in rendered and "Высокая серьёзность — 1" in rendered
     assert "Неподтверждённых замечаний — 1" in rendered
@@ -245,6 +261,8 @@ def test_cli_settings_are_scoped_to_invocation(
                 {"block_id": block["id"], "kind": "metadata", "reason": "Нет обязательства."}
                 for block in blocks
             ]})
+        if schema is DependencyReview:
+            return DependencyReview(dependency_gaps=())
         if schema is SpecificationReview:
             return SpecificationReview(findings=())
         if schema is RelationReviews:
@@ -264,10 +282,10 @@ def test_cli_settings_are_scoped_to_invocation(
 
 
 def test_report_fences_and_evidence_recheck(
-    document, extraction, llm, assessments, skipped_comparisons, skipped_relations,
+    document, extraction, llm, batch_assessments, skipped_comparisons, skipped_relations,
 ):
     llm.generate.side_effect = [
-        extraction, assessments(), assessments(), assessments(), SpecificationReview(findings=()),
+        extraction, batch_assessments(), SpecificationReview(findings=()), DependencyReview(dependency_gaps=()),
         *skipped_comparisons, skipped_relations,
     ]
     run = AnalysisPipeline(llm, agent_version="fixture").analyze(document)
@@ -291,10 +309,10 @@ def test_report_fences_and_evidence_recheck(
 
 
 def test_clarification_recovers_unmatched_findings(
-    document, extraction, llm, assessments, skipped_comparisons, skipped_relations,
+    document, extraction, llm, batch_assessments, skipped_comparisons, skipped_relations,
 ):
     llm.generate.side_effect = [
-        extraction, assessments(), assessments(), assessments(), SpecificationReview(findings=()),
+        extraction, batch_assessments(), SpecificationReview(findings=()), DependencyReview(dependency_gaps=()),
         *skipped_comparisons, skipped_relations,
     ]
     run = AnalysisPipeline(llm, agent_version="fixture").analyze(document)

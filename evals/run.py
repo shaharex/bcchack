@@ -22,12 +22,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from requirements_validator.aggregation import FindingsAggregator  # noqa: E402
+from requirements_validator.extractor import RequirementsExtractor  # noqa: E402
 from requirements_validator.gemini import GeminiClient, GeminiSettings, LLMError  # noqa: E402
 from requirements_validator.models import Anchor, ParsedDocument, QualityCriterion, ReviewResult, SourceBlock  # noqa: E402
-from requirements_validator.reviewers import CrossRequirementReviewer, ProposedFinding, SpecificationReview  # noqa: E402
+from requirements_validator.reviewers import (  # noqa: E402
+    INDIVIDUAL_BATCH_SIZE, CrossRequirementReviewer, IndividualReviewer, ProposedFinding, SpecificationReview,
+)
 from requirements_validator.source import EvidenceError, SourceIndex  # noqa: E402
 
-from evals.cases import CASES, EvalCase, ExpectedIssue  # noqa: E402
+from evals.cases import ALL_CASES, CASES, OFFICIAL_REGRESSION_CASES, EvalCase, ExpectedIssue  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -48,7 +51,7 @@ class MaterializedCase:
 
 def document_for(case: EvalCase) -> MaterializedCase:
     """Hide oracle metadata behind stable, meaningless model-visible IDs."""
-    ordinal = CASES.index(case) + 1
+    ordinal = ALL_CASES.index(case) + 1
     fixture_id_by_block = {f"b{i:03d}": passage.id for i, passage in enumerate(case.passages, start=1)}
     document = ParsedDocument(
         id=f"d{ordinal:03d}", title="Спецификация требований",
@@ -61,14 +64,16 @@ def document_for(case: EvalCase) -> MaterializedCase:
 
 
 def validate_corpus() -> None:
-    ids = [case.id for case in CASES]
+    ids = [case.id for case in ALL_CASES]
     if len(ids) != len(set(ids)):
         raise ValueError("eval case IDs must be unique")
-    for case in CASES:
+    for case in ALL_CASES:
         passage_ids = [p.id for p in case.passages]
         if len(passage_ids) != len(set(passage_ids)):
             raise ValueError(f"{case.id}: passage IDs must be unique")
         known = set(passage_ids)
+        if case.individual_review_passage is not None and case.individual_review_passage not in known:
+            raise ValueError(f"{case.id}: invalid individual review passage")
         for issue in case.expected:
             if not issue.acceptable_passage_sets or any(not evidence or not evidence <= known for evidence in issue.acceptable_passage_sets):
                 raise ValueError(f"{case.id}: invalid expected passage set")
@@ -236,23 +241,47 @@ def run_live(cases: tuple[EvalCase, ...]) -> tuple[dict[str, object], bool]:
     settings = _live_settings()
     results = []
     with GeminiClient(settings) as llm:
+        extractor = RequirementsExtractor(llm)
+        individual_reviewer = IndividualReviewer(llm)
         reviewer = CrossRequirementReviewer(llm)
         aggregator = FindingsAggregator(llm)
         interrupted = None
         for case in cases:
             try:
                 materialized = document_for(case)
-                broad = reviewer.review(materialized.document, ())
-                focused = reviewer.review_focused(materialized.document, ())
-                relations = reviewer.review_relations(materialized.document, ())
-                proposals = broad.findings + focused.findings + relations.findings
-                metrics = _candidate_metrics(materialized, proposals)
-                review = aggregator.aggregate(
-                    materialized.document, (), {}, SpecificationReview(findings=proposals),
+                document = materialized.document
+                requirements = ()
+                individual = {}
+                if case.individual_review_passage is not None:
+                    requirements = extractor.extract(document)
+                    for start in range(0, len(requirements), INDIVIDUAL_BATCH_SIZE):
+                        targets = requirements[start:start + INDIVIDUAL_BATCH_SIZE]
+                        individual.update(individual_reviewer.review_batch(document, targets, requirements))
+
+                broad = reviewer.review(document, requirements)
+                dependencies = reviewer.review_dependencies(document, requirements)
+                focused = reviewer.review_focused(document, requirements)
+                relations = reviewer.review_relations(document, requirements)
+                generated = broad.findings + dependencies.findings + focused.findings + relations.findings
+                cross = SpecificationReview(findings=reviewer.repair_quotes(document, requirements, generated))
+                proposals = cross.findings + tuple(
+                    finding for individual_review in individual.values()
+                    for assessment in individual_review.assessments for finding in assessment.findings
                 )
+                metrics = _candidate_metrics(materialized, proposals)
+                review = aggregator.aggregate(document, requirements, individual, cross)
                 metrics["merged_candidate_count"] = len(proposals) - len(review.rejected) - len(review.findings)
                 observed, rejected = _observe(materialized, review)
-                results.append(score(case, observed, rejected, metrics))
+                result = score(case, observed, rejected, metrics)
+                if case.individual_review_passage is not None:
+                    target_reviewed = any(
+                        materialized.fixture_id_by_block[requirement.source.location.block_id]
+                        == case.individual_review_passage for requirement in requirements
+                    )
+                    result["individual_review_passage"] = case.individual_review_passage
+                    result["individual_review_passage_reviewed"] = target_reviewed
+                    result["control_passed"] = target_reviewed and not result["unexpected_findings"]
+                results.append(result)
             except LLMError as exc:
                 interrupted = {"case": case.id, "provider_error": _sanitized_provider_error(exc)}
                 break
@@ -292,16 +321,23 @@ def run_live(cases: tuple[EvalCase, ...]) -> tuple[dict[str, object], bool]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Requirements-validator semantic regression eval")
     parser.add_argument("--mode", choices=("check", "live"), default="check")
-    parser.add_argument(
-        "--case", action="append", choices=tuple(case.id for case in CASES), dest="case_ids",
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--suite", choices=("baseline", "official-regressions"), default="baseline",
+        help="Run the historical baseline or the cases derived from the official report review.",
+    )
+    selection.add_argument(
+        "--case", action="append", choices=tuple(case.id for case in ALL_CASES), dest="case_ids",
         help="Run only this case; repeat the option for a controlled subset.",
     )
     parser.add_argument("--output", type=Path, help="Write JSON result to this path")
     args = parser.parse_args()
     if args.case_ids and len(args.case_ids) != len(set(args.case_ids)):
         parser.error("each --case may be supplied only once")
-    by_id = {case.id: case for case in CASES}
-    selected = tuple(by_id[case_id] for case_id in args.case_ids) if args.case_ids else CASES
+    by_id = {case.id: case for case in ALL_CASES}
+    selected = OFFICIAL_REGRESSION_CASES if args.suite == "official-regressions" else CASES
+    if args.case_ids:
+        selected = tuple(by_id[case_id] for case_id in args.case_ids)
     validate_corpus()
     validate_scorer()
     validate_candidate_metrics()

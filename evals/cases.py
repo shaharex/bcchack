@@ -27,6 +27,7 @@ class EvalCase:
     description: str
     passages: tuple[Passage, ...]
     expected: tuple[ExpectedIssue, ...]
+    individual_review_passage: str | None = None
 
 
 CASES = (
@@ -108,4 +109,85 @@ CASES = (
         expected=(),
     ),
 )
+
+OFFICIAL_REGRESSION_CASES = (
+    EvalCase(
+        id="official_second_notification",
+        description="D-20: the monthly cap and the threshold-change rule disagree after a first notification.",
+        passages=(
+            Passage("monthly-cap", "На карту приходится максимум одно уведомление о достижении порога за календарный месяц.", "Расходы"),
+            Passage("threshold-change", "При изменении порога накопленная сумма сохраняется. Если она ниже нового порога, следующее достижение вызывает уведомление независимо от истории предыдущей настройки.", "Настройки"),
+        ),
+        expected=(ExpectedIssue(QualityCriterion.CONSISTENCY, (frozenset({"monthly-cap", "threshold-change"}),)),),
+    ),
+    EvalCase(
+        id="official_purchase_month",
+        description="D-33: a purchase and its posting straddle the month boundary.",
+        passages=(
+            Passage("purchase-date-rule", "Месяц расходов определяется по дате совершения покупки по времени Алматы. В расходы входят проведённые покупки.", "Расчёт"),
+            Passage("month-end-acceptance", """Все даты и время в примере указаны по Алматы.
+
+| Исходные условия | Действие | Ожидаемый результат |
+| --- | --- | --- |
+| Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03 | Февральский счётчик вырос на 4 000 ₸ |""", "Приёмка"),
+        ),
+        expected=(ExpectedIssue(QualityCriterion.CONSISTENCY, (frozenset({"purchase-date-rule", "month-end-acceptance"}),)),),
+    ),
+    EvalCase(
+        id="official_settings_read",
+        description="D-29: the screen needs stored settings and monthly spend, but the API describes saving only.",
+        passages=(
+            Passage("screen-values", "При открытии экрана отображаются сохранённый порог, состояние переключателя и сумма расходов за текущий месяц.", "Интерфейс"),
+            Passage("integration", "Приложение читает и сохраняет настройки карты через дочернюю спецификацию REST API.", "Интеграция"),
+            Passage("save-contract", "POST /alerts/limit: заменить настройку карты и вернуть результат сохранения.", "REST API"),
+        ),
+        expected=(ExpectedIssue(
+            QualityCriterion.COMPLETENESS,
+            (frozenset({"integration", "save-contract"}), frozenset({"screen-values", "save-contract"})),
+            manual_review=True,
+        ),),
+    ),
+    EvalCase(
+        id="official_purchase_lifecycle",
+        description="D-15: the trigger for spending and the notification deadline is unclear across transaction stages.",
+        passages=(
+            Passage("notification-goal", "Клиент узнаёт о достижении личного бюджета в момент покупки.", "Цель"),
+            Passage("transaction-stages", "Процессинг авторизует покупку и позднее выполняет клиринг.", "Процессинг"),
+            Passage("purchase-trigger", "В расходы входят проведённые покупки. Процессинг передаёт сервису расходов событие «проведена покупка».", "Учёт расходов"),
+            Passage("dispatch-window", "Сервис передаёт уведомление на отправку в течение минуты после получения события.", "Уведомления"),
+        ),
+        expected=(ExpectedIssue(
+            QualityCriterion.AMBIGUITY,
+            (frozenset({"transaction-stages", "purchase-trigger", "notification-goal"}),
+             frozenset({"transaction-stages", "purchase-trigger", "dispatch-window"})),
+        ),),
+    ),
+    EvalCase(
+        id="official_refund_attribution",
+        description="D-26: the refund flow lacks a defined way to identify the original purchase month.",
+        passages=(
+            Passage("refund-rule", "Возврат уменьшает расходы месяца исходной покупки независимо от даты возврата.", "Расчёт"),
+            Passage("refund-event", "Для возврата процессинг передаёт идентификатор карты, идентификатор операции возврата, дату и сумму возврата.", "Событие возврата"),
+            Passage("recorded-purchases", "Для проведённой покупки сервис хранит идентификатор карты, идентификатор операции, месяц покупки и сумму.", "Данные"),
+        ),
+        expected=(ExpectedIssue(
+            QualityCriterion.COMPLETENESS,
+            (frozenset({"refund-rule", "refund-event"}),),
+            manual_review=True,
+        ),),
+    ),
+    EvalCase(
+        id="official_amount_response_type",
+        description="The request and response independently specify different types for amount.",
+        passages=(
+            Passage("request-field", "Запрос POST /alerts/limit принимает поле amount типа integer. Значение задаёт порог в целых тенге.", "Запрос"),
+            Passage("response-field", "При успехе HTTP 200 возвращает сохранённый порог в поле amount типа string.", "Ответ"),
+            Passage("response-example", 'Пример успешного ответа: {"amount":"50000"}.', "Пример ответа"),
+        ),
+        expected=(),
+        individual_review_passage="response-field",
+    ),
+)
+
+ALL_CASES = CASES + OFFICIAL_REGRESSION_CASES
 

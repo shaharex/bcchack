@@ -9,12 +9,12 @@ from requirements_validator.aggregation import Verdict, Verdicts
 from requirements_validator.extractor import Extraction
 from requirements_validator.models import AnalysisRunResult, ClarificationQuestion, SeverityDecision
 from requirements_validator.pipeline import AnalysisPipeline
-from requirements_validator.reviewers import FocusedReview, IndividualReview, RelationReviews, SpecificationReview
+from requirements_validator.reviewers import DependencyReview, FocusedReview, IndividualReviews, RelationReviews, SpecificationReview
 
 
 @pytest.mark.parametrize("bad_port", [None, "severity", "clarification"])
 def test_phase_two_ports_and_result_integrity(
-    document, extraction, assessments, llm, bad_port, skipped_comparisons, skipped_relations,
+    document, extraction, batch_assessments, llm, bad_port, skipped_comparisons, skipped_relations,
 ):
     parser, severity, clarification, report = Mock(), Mock(), Mock(), Mock()
     parser.parse.return_value = document
@@ -22,11 +22,14 @@ def test_phase_two_ports_and_result_integrity(
 
     def respond(instruction, payload, schema):
         calls.append(schema)
-        if schema is IndividualReview:
-            assert json.loads(payload)["target"]["id"].startswith("R-")
-            return assessments()
+        if schema is IndividualReviews:
+            targets = [target["id"] for target in json.loads(payload)["targets"]]
+            assert targets == ["R-001", "R-002", "R-003"]
+            return batch_assessments(targets[::-1])
         if schema is Extraction:
             return extraction
+        if schema is DependencyReview:
+            return DependencyReview(dependency_gaps=())
         if schema is FocusedReview:
             return skipped_comparisons[0]
         if schema is RelationReviews:
@@ -68,7 +71,7 @@ def test_phase_two_ports_and_result_integrity(
     assert result.questions and result.model == "mock"
     assert AnalysisRunResult.model_validate_json(result.model_dump_json()) == result
     assert calls == [
-        Extraction, IndividualReview, IndividualReview, IndividualReview, SpecificationReview,
+        Extraction, IndividualReviews, SpecificationReview, DependencyReview,
         *[FocusedReview] * len(skipped_comparisons), RelationReviews, Verdicts,
     ]
 
@@ -77,7 +80,7 @@ def test_empty_extraction_still_runs_whole_document_review(document, llm, skippe
     excluded = tuple({"block_id": block.id, "kind": "supporting_context", "reason": "Нет обязательства."}
                      for block in document.blocks)
     llm.generate.side_effect = [Extraction.model_validate({"groups": [], "excluded": excluded}),
-                                SpecificationReview(findings=()), *skipped_comparisons, skipped_relations]
+                                SpecificationReview(findings=()), DependencyReview(dependency_gaps=()), *skipped_comparisons, skipped_relations]
     result = AnalysisPipeline(llm, agent_version="test").analyze(document)
     assert result.requirements == () and result.review.evaluations == ()
     assert result.questions is None and result.severities is None
@@ -85,10 +88,10 @@ def test_empty_extraction_still_runs_whole_document_review(document, llm, skippe
 
 @pytest.mark.parametrize("corruption", ["source", "section", "coverage", "evaluation", "severity", "clarification"])
 def test_imported_run_checks_evidence_and_foreign_keys(
-    document, extraction, assessments, llm, corruption, skipped_comparisons, skipped_relations,
+    document, extraction, batch_assessments, llm, corruption, skipped_comparisons, skipped_relations,
 ):
     llm.generate.side_effect = [
-        extraction, *(assessments() for _ in range(3)), SpecificationReview(findings=()),
+        extraction, batch_assessments(), SpecificationReview(findings=()), DependencyReview(dependency_gaps=()),
         *skipped_comparisons, skipped_relations,
     ]
     result = AnalysisPipeline(llm, agent_version="test").analyze(document)

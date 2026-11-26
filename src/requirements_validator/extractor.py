@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Literal
 
 from pydantic import Field
@@ -11,6 +12,15 @@ from .ports import StructuredLLM, StructuredResponseError
 from .source import Anchor, EvidenceError, SourceIndex, contains, stable_id
 
 EXTRACTION_BATCH_CHARS = 5500
+HTTP_CONTRACT_FIELDS = {
+    "rest type", "http method", "request method", "request url", "curl",
+    "http-метод", "метод http", "метод запроса", "url запроса",
+}
+EMPTY_CONTRACT_VALUES = {"", "-", "–", "—", "n/a", "tbd"}
+RESPONSE_HEADING = re.compile(
+    r"^(?:(?:HTTP\s+)?[1-5]\d{2}\b|(?:примеры?\s+)?(?:ответ(?:а|ы)?|responses?)\b)", re.IGNORECASE,
+)
+JSON_FENCE = re.compile(r"^\s*(?:`{3,}|~{3,})[ \t]*json\b", re.IGNORECASE)
 
 class Atom(Schema):
     statement: Text
@@ -85,7 +95,12 @@ class RequirementsExtractor:
                         context.setdefault(span.block_id, []).append(ContextPassage(
                             source=citation, kind=passage.kind, reason=passage.reason))
                     for block in blocks:
-                        self._check_table_rows(block, rows, context.get(block.id, []))
+                        exclusion = skipped.get(block.id)
+                        block_is_metadata = exclusion is not None and exclusion.kind == "metadata"
+                        self._check_table_rows(block, rows, context.get(block.id, []), block_is_metadata)
+                        if (block_is_metadata and block.section and RESPONSE_HEADING.match(block.section[-1])
+                                and JSON_FENCE.match(block.text)):
+                            raise EvidenceError(f"API response example in {block.id} carries a specification fact")
                     break
                 except (EvidenceError, StructuredResponseError) as exc:
                     if attempt:
@@ -116,17 +131,24 @@ class RequirementsExtractor:
         return tuple(r.model_copy(update={"id": f"R-{i:03}"}) for i, r in enumerate(ordered, 1)), tuple(coverage)
 
     @staticmethod
-    def _check_table_rows(block: SourceBlock, rows: tuple[Requirement, ...], context: list[ContextPassage]) -> None:
+    def _check_table_rows(block: SourceBlock, rows: tuple[Requirement, ...], context: list[ContextPassage],
+                          block_is_metadata: bool) -> None:
         spans = [r.source.location for r in rows if r.source.location.block_id == block.id]
         spans.extend(item.source.location for item in context)
         lines = block.text.splitlines(keepends=True)
-        if not spans or len(lines) < 3 or "|" not in lines[1] or lines[1].strip(" |:-\r\n\t"):
+        if len(lines) < 3 or "|" not in lines[1] or lines[1].strip(" |:-\r\n\t"):
             return
+        metadata_spans = [item.source.location for item in context if item.kind == "metadata"]
         start = len(lines[0]) + len(lines[1])
         for line in lines[2:]:
             end = start + len(line)
-            if line.strip(" |\r\n\t") and not any(s.start < end and start < s.end for s in spans):
+            if spans and line.strip(" |\r\n\t") and not any(s.start < end and start < s.end for s in spans):
                 raise EvidenceError(f"Uncovered table row in {block.id}: {line.strip()}")
+            if block_is_metadata or any(s.start < end and start < s.end for s in metadata_spans):
+                label, _, value = line.strip().strip("|").partition("|")
+                if (label.strip(" *_`\t").casefold() in HTTP_CONTRACT_FIELDS
+                        and value.strip(" *_`\t").casefold() not in EMPTY_CONTRACT_VALUES):
+                    raise EvidenceError(f"API contract row in {block.id} carries a specification fact: {line.strip()}")
             start = end
 
     def _ground(self, document: ParsedDocument, draft: Extraction) -> tuple[Requirement, ...]:

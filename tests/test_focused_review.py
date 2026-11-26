@@ -12,7 +12,7 @@ from requirements_validator.pipeline import AnalysisPipeline
 from requirements_validator.ports import StructuredResponseError
 from requirements_validator.report import MarkdownReportGenerator
 from requirements_validator.reviewers import (
-    CrossRequirementReviewer, FocusedReview, RelationPlan, RelationReviews, ScenarioConflict, SpecificationReview,
+    CrossRequirementReviewer, DependencyReview, FocusedReview, RelationPlan, RelationReviews, ScenarioConflict, SpecificationReview,
 )
 
 
@@ -81,6 +81,8 @@ def test_focused_scenario_reaches_report(card_spec, llm, prompt_family, subject,
                 {"block_id": block["id"], "kind": "supporting_context", "reason": "Проверяется целиком."}
                 for block in data["blocks"]
             ]})
+        if schema is DependencyReview:
+            return DependencyReview(dependency_gaps=())
         if schema is SpecificationReview:
             return SpecificationReview(findings=())
         if schema is RelationPlan:
@@ -129,6 +131,8 @@ def test_matching_get_and_curl_cannot_produce_focused_method_conflict(card_spec,
                 {"block_id": block["id"], "kind": "supporting_context", "reason": "Проверяется целиком."}
                 for block in data["blocks"]
             ]})
+        if schema is DependencyReview:
+            return DependencyReview(dependency_gaps=())
         if schema is SpecificationReview:
             assert "Created does not identify the request method" in instruction
             return SpecificationReview(findings=())

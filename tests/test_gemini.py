@@ -30,7 +30,7 @@ def quota_failure(*, header=None, protobuf_delay=None):
     })
 
 
-def invoke(responses, requests, sleeps):
+def invoke(responses, requests, sleeps, *, max_attempts=2, max_wait=60):
     def handler(request):
         requests.append(request)
         response = responses.pop(0)
@@ -39,7 +39,8 @@ def invoke(responses, requests, sleeps):
         return response
 
     settings = GeminiSettings.from_env({"GEMINI_API_KEY": "unit-test", "GEMINI_MODEL": "test-model",
-                                        "GEMINI_TIMEOUT_MS": "4500", "GEMINI_MAX_ATTEMPTS": "2"})
+                                        "GEMINI_TIMEOUT_MS": "4500", "GEMINI_MAX_ATTEMPTS": str(max_attempts),
+                                        "GEMINI_MAX_RETRY_WAIT_SECONDS": str(max_wait)})
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         with genai.Client(api_key=settings.api_key.get_secret_value(),
                           http_options=types.HttpOptions(httpx_client=http)) as sdk:
@@ -82,16 +83,25 @@ def test_retry_exhaustion_and_config():
 def test_sdk_transport_honors_maximum_retry_after_from_header_and_retry_info():
     requests, sleeps = [], []
     result = invoke(
-        [quota_failure(header="2", protobuf_delay="3.25s"), success()], requests, sleeps,
+        [quota_failure(header="2", protobuf_delay="5s"), success()], requests, sleeps,
     )
     assert result.findings == ()
     assert len(requests) == 2
-    assert sleeps == [3.25]
+    assert sleeps == [5]
 
 
-def test_sdk_transport_rejects_retry_info_beyond_configured_timeout():
+def test_sdk_transport_stops_on_long_quota_reset():
     requests, sleeps = [], []
-    with pytest.raises(LLMError, match=r"retry after 5s, beyond the configured timeout"):
-        invoke([quota_failure(header="1", protobuf_delay="5s")], requests, sleeps)
+    with pytest.raises(LLMError, match=r"HTTP 429.*retry after 48703s.*AI Studio"):
+        invoke([quota_failure(header="1", protobuf_delay="48703s")], requests, sleeps)
     assert len(requests) == 1
     assert sleeps == []
+
+
+def test_short_retries_share_the_wait_budget():
+    requests, sleeps = [], []
+    with pytest.raises(LLMError, match=r"HTTP 429"):
+        invoke([quota_failure(header="4"), quota_failure(header="4")], requests, sleeps,
+               max_attempts=3, max_wait=6)
+    assert len(requests) == 2
+    assert sleeps == [4]

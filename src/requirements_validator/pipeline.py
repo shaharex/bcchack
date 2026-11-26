@@ -6,7 +6,7 @@ from .aggregation import FindingsAggregator
 from .extractor import RequirementsExtractor
 from .models import AnalysisRunResult, ParsedDocument
 from .ports import ClarificationGenerator, DocumentParser, ReportGenerator, SeverityClassifier, StructuredLLM
-from .reviewers import CrossRequirementReviewer, IndividualReviewer, SpecificationReview
+from .reviewers import INDIVIDUAL_BATCH_SIZE, CrossRequirementReviewer, IndividualReviewer, SpecificationReview
 
 LOG = logging.getLogger(__name__)
 
@@ -30,17 +30,21 @@ class AnalysisPipeline:
         requirements, coverage = self.extractor.extract_with_coverage(document)
         LOG.info("Reviewing %d extracted requirements", len(requirements))
         individual = {}
-        for count, requirement in enumerate(requirements, start=1):
-            individual[requirement.id] = self.individual.review(document, requirement, requirements)
-            if count % 10 == 0:
-                LOG.info("Reviewed %d of %d requirements", count, len(requirements))
+        for start in range(0, len(requirements), INDIVIDUAL_BATCH_SIZE):
+            targets = requirements[start:start + INDIVIDUAL_BATCH_SIZE]
+            individual.update(self.individual.review_batch(document, targets, requirements))
+            LOG.info("Reviewed %d of %d requirements", len(individual), len(requirements))
         LOG.info("Reviewing the full specification")
         cross = self.cross.review(document, requirements)
+        LOG.info("Tracing required data and operations")
+        dependencies = self.cross.review_dependencies(document, requirements)
         LOG.info("Reviewing focused cross-requirement scenarios")
         focused = self.cross.review_focused(document, requirements)
         LOG.info("Tracing relationships between source passages")
         relations = self.cross.review_relations(document, requirements)
-        cross = SpecificationReview(findings=cross.findings + focused.findings + relations.findings)
+        proposals = cross.findings + dependencies.findings + focused.findings + relations.findings
+        findings = self.cross.repair_quotes(document, requirements, proposals)
+        cross = SpecificationReview(findings=findings)
         LOG.info("Verifying finding evidence")
         review = self.aggregator.aggregate(document, requirements, individual, cross)
         severities = None

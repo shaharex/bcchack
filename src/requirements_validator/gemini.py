@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import time
@@ -12,6 +13,8 @@ from pydantic import Field, SecretStr, ValidationError, field_validator
 
 from .models import Schema, Text
 from .ports import LLMError as LLMError, StructuredResponseError, T
+
+LOG = logging.getLogger(__name__)
 
 
 def retry_after(error: errors.APIError) -> float:
@@ -32,6 +35,7 @@ class GeminiSettings(Schema):
     model: Text = "gemini-flash-latest"
     timeout_ms: int = Field(default=60_000, gt=0)
     max_attempts: int = Field(default=3, ge=1, le=8)
+    max_retry_wait_seconds: int = Field(default=60, ge=0)
 
     @field_validator("api_key")
     @classmethod
@@ -44,7 +48,8 @@ class GeminiSettings(Schema):
     def from_env(cls, env: Mapping[str, str] | None = None) -> Self:
         env = os.environ if env is None else env
         names = {"api_key": "GEMINI_API_KEY", "model": "GEMINI_MODEL",
-                 "timeout_ms": "GEMINI_TIMEOUT_MS", "max_attempts": "GEMINI_MAX_ATTEMPTS"}
+                 "timeout_ms": "GEMINI_TIMEOUT_MS", "max_attempts": "GEMINI_MAX_ATTEMPTS",
+                 "max_retry_wait_seconds": "GEMINI_MAX_RETRY_WAIT_SECONDS"}
         return cls.model_validate({key: env[name] for key, name in names.items() if name in env})
 
 
@@ -82,6 +87,7 @@ class GeminiClient:
             http_options=types.HttpOptions(timeout=self.settings.timeout_ms,
                                           retry_options=types.HttpRetryOptions(attempts=1)),
         )
+        wait_remaining = self.settings.max_retry_wait_seconds
         for attempt in range(1, self.settings.max_attempts + 1):
             try:
                 response = self._client.models.generate_content(
@@ -91,16 +97,24 @@ class GeminiClient:
                     errors.APIError) as exc:
                 code = exc.code if isinstance(exc, errors.APIError) else None
                 transient = code is None or code in {408, 429, 500, 502, 503, 504}
-                if not transient or attempt == self.settings.max_attempts:
-                    failure = f"HTTP {code}" if code is not None else type(exc).__name__
-                    if code == 429:
-                        failure += ", rate limit or quota exceeded"
-                    raise LLMError(f"Gemini request failed for {schema.__name__} ({failure}, attempts={attempt})") from exc
-                requested = retry_after(exc) if isinstance(exc, errors.APIError) else 0
-                if requested > self.settings.timeout_ms / 1000:
-                    raise LLMError(f"Gemini requested a retry after {requested:g}s, beyond the configured timeout") from exc
-                self._sleep(max(requested, min(2 ** (attempt - 1), 16)))
-                continue
+                requested = retry_after(exc) if transient and isinstance(exc, errors.APIError) else 0
+                delay = max(requested, min(2 ** (attempt - 1), 16))
+                if transient and attempt < self.settings.max_attempts and delay <= wait_remaining:
+                    if code in {429, 503}:
+                        LOG.info("Gemini returned HTTP %d for %s. Retrying in %.1fs.", code, schema.__name__, delay)
+                    self._sleep(delay)
+                    wait_remaining -= delay
+                    continue
+                failure = f"HTTP {code}" if code is not None else type(exc).__name__
+                advice = ""
+                if code == 429:
+                    failure += ", rate limit or quota exceeded"
+                    advice = (f" Check the Google AI Studio limits for project and model {self.model}, "
+                              "then retry when quota is available or use a project with sufficient quota.")
+                if requested:
+                    advice = f" Gemini requested a retry after {requested:g}s." + advice
+                raise LLMError(f"Gemini request failed for {schema.__name__} ({failure}, attempts={attempt})."
+                               + advice) from exc
             except ValueError as exc:
                 # SDK request conversion and response-envelope decoding both
                 # precede validation of the model's generated JSON below.

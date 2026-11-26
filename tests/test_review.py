@@ -4,9 +4,10 @@ import pytest
 
 from requirements_validator.aggregation import DuplicatePairs, FindingsAggregator, Verdict, Verdicts
 from requirements_validator.models import QualityCriterion as Criterion
-from requirements_validator.ports import StructuredResponseError
+from requirements_validator.ports import LLMError, StructuredResponseError
 from requirements_validator.reviewers import (
-    CrossRequirementReviewer, DependencyGap, IndividualReviewer, ProposedEvidence, ProposedFinding, SpecificationReview,
+    CrossRequirementReviewer, DependencyGap, DependencyReview, IndividualReview, IndividualReviewer, IndividualReviews,
+    ProposedEvidence, ProposedFinding, QuoteRepair, QuoteRepairs, SpecificationReview,
 )
 from requirements_validator.severity import RubricSeverityClassifier
 
@@ -33,6 +34,25 @@ def test_individual_review_retries_an_incomplete_criterion_matrix(document, requ
     first, retry = [call.args for call in llm.generate.call_args_list]
     assert retry[1:] == first[1:]
     assert ", ".join(Criterion) in retry[0]
+
+
+def test_invalid_review_batch_splits_to_recover_missing_targets(document, requirements, llm, assessments, batch_assessments):
+    llm.generate.reset_mock()
+    llm.generate.side_effect = [batch_assessments(("R-001", "R-001", "R-003")),
+                                assessments(), batch_assessments(("R-002", "R-003"))]
+    reviews = IndividualReviewer(llm).review_batch(document, requirements, requirements)
+    assert reviews == {target.id: assessments() for target in requirements}
+    assert [call.args[2] for call in llm.generate.call_args_list] == [
+        IndividualReviews, IndividualReview, IndividualReviews,
+    ]
+
+
+def test_quota_failure_does_not_split_review_batch(document, requirements, llm):
+    llm.generate.reset_mock()
+    llm.generate.side_effect = LLMError("HTTP 429")
+    with pytest.raises(LLMError, match="429"):
+        IndividualReviewer(llm).review_batch(document, requirements, requirements)
+    assert llm.generate.call_count == 1
 
 
 def test_merge_across_passes_and_link_evaluations(document, requirements, llm, assessments):
@@ -101,6 +121,35 @@ def test_cross_review_uses_entire_document_and_retains_both_sides(document, requ
     assert set(finding.requirement_ids) == {a.id, c.id}
     reverse = SpecificationReview(findings=(f.model_copy(update={"evidence": refs[::-1]}),))
     assert agg.aggregate(document, requirements, reviews, reverse).findings == result.findings
+
+
+@pytest.mark.parametrize("verbatim", [True, False])
+def test_cross_quote_repair_preserves_the_claim_and_requires_exact_source(
+    document, requirements, llm, assessments, verbatim,
+):
+    target = requirements[0]
+    original = issue(target, Criterion.COMPLETENESS)
+    invalid = original.evidence[0].model_copy(update={"quote": "Invented quotation"})
+    proposal = original.model_copy(update={"evidence": (invalid,)})
+    repair = QuoteRepair(citation=0, quote=target.source.quote if verbatim else "Still invented")
+    llm.generate.reset_mock()
+    llm.generate.side_effect = [
+        QuoteRepairs(repairs=(repair,)),
+        Verdicts(verdicts=(verdict(0),)),
+    ]
+
+    repaired, = CrossRequirementReviewer(llm).repair_quotes(document, requirements, (proposal,))
+    assert repaired == (original if verbatim else proposal)
+    request = json.loads(llm.generate.call_args.args[1])
+    assert set(request["blocks"]) == {invalid.block_id}
+    assert request["invalid_citations"][0]["evidence"] == invalid.model_dump()
+    reviews = {r.id: assessments() for r in requirements}
+    result = FindingsAggregator(llm).aggregate(
+        document, requirements, reviews, SpecificationReview(findings=(repaired,)),
+    )
+    assert len(result.findings) == int(verbatim)
+    assert len(result.rejected) == int(not verbatim)
+    assert llm.generate.call_count == 1 + int(verbatim)
 
 
 def test_missing_dependency_keeps_targeted_consumer_and_unowned_context(
@@ -268,8 +317,9 @@ def test_cross_batch_cross_criterion_duplicate_merge_preserves_both_evaluation_l
     assert {finding.criterion, *finding.related_criteria} == {Criterion.AMBIGUITY, Criterion.COMPLETENESS}
 
 
+@pytest.mark.parametrize("dedicated_review", [False, True])
 def test_structured_dependency_gap_becomes_grounded_end_to_end(
-    document, requirements, llm, assessments,
+    document, requirements, llm, assessments, dedicated_review,
 ):
     consumer = requirements[0]
     gap = DependencyGap(
@@ -286,8 +336,13 @@ def test_structured_dependency_gap_becomes_grounded_end_to_end(
     assert proposed.evidence == (gap.consumer, gap.contract)
     assert proposed.explanation == " ".join((gap.consumer_needs, gap.available_from_contract, gap.unresolved_decision))
 
-    llm.generate.return_value = SpecificationReview(findings=(), dependency_gaps=(gap,))
-    cross = CrossRequirementReviewer(llm).review(document, requirements)
+    reviewer = CrossRequirementReviewer(llm)
+    if dedicated_review:
+        llm.generate.return_value = DependencyReview(dependency_gaps=(gap,))
+        cross = reviewer.review_dependencies(document, requirements)
+    else:
+        llm.generate.return_value = SpecificationReview(findings=(), dependency_gaps=(gap,))
+        cross = reviewer.review(document, requirements)
     assert cross.findings == (proposed,)
     assert cross.dependency_gaps == ()
 

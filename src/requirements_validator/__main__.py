@@ -1,26 +1,32 @@
 import argparse
 import logging
 import os
+import sqlite3
 import sys
 from collections.abc import Sequence
+from contextlib import ExitStack, closing
 from importlib.metadata import version
 from pathlib import Path
 
 from dotenv import dotenv_values
 from pydantic import TypeAdapter, ValidationError
 
+from .checkpoint import CheckpointedLLM
 from .clarifications import StakeholderClarificationGenerator
 from .gemini import GeminiClient, GeminiSettings, LLMError
 from .models import QualityCriterion
 from .parsers import DocumentParseError, FileDocumentParser
 from .pipeline import AnalysisPipeline
+from .ports import StructuredResponseError
 from .report import MarkdownReportGenerator
 from .severity import DEFAULT_RULES, Level, RubricSeverityClassifier, SeverityRule
+from .source import EvidenceError
 
 LOG = logging.getLogger(__name__)
 GEMINI_ENV = {
     "api_key": "GEMINI_API_KEY", "model": "GEMINI_MODEL",
     "timeout_ms": "GEMINI_TIMEOUT_MS", "max_attempts": "GEMINI_MAX_ATTEMPTS",
+    "max_retry_wait_seconds": "GEMINI_MAX_RETRY_WAIT_SECONDS",
 }
 
 
@@ -29,10 +35,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                                   description="Validate requirements and write a Russian Markdown report.")
     cli.add_argument("--input", type=Path, required=True, help="UTF-8 Markdown or text-based PDF")
     cli.add_argument("--output", type=Path, required=True, help="Destination Markdown report")
+    cli.add_argument("--no-resume", action="store_true", help="Run without reading or writing local checkpoints")
     args = cli.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    checkpoint = None
     try:
         if not args.input.is_file():
             raise DocumentParseError(f"Input file does not exist or is not a file: {args.input}")
@@ -57,13 +65,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             for criterion, level in overrides.items()
         })
         agent_version = env.get("VALIDATOR_AGENT_VERSION", "").strip() or f"v{version('requirements-validator')}"
+        document = FileDocumentParser().parse(args.input)
+        writer = MarkdownReportGenerator()
+        checkpoint_path = args.output.with_name(f".{args.output.name}.gemini-checkpoint.sqlite3")
         LOG.info("Analyzing %s with %s", args.input.name, settings.model)
-        with GeminiClient(settings) as llm:
+        with ExitStack() as resources:
+            live = resources.enter_context(GeminiClient(settings))
+            llm = live
+            if not args.no_resume:
+                if checkpoint_path.exists() and args.input.samefile(checkpoint_path):
+                    raise DocumentParseError("Checkpoint path must be distinct from the input.")
+                database = resources.enter_context(closing(sqlite3.connect(checkpoint_path)))
+                checkpoint = CheckpointedLLM(live, database, document_id=document.id, agent_version=agent_version)
+                llm = checkpoint
             pipeline = AnalysisPipeline(
-                llm, agent_version=agent_version, parser=FileDocumentParser(), severity=rubric,
-                clarification=StakeholderClarificationGenerator(llm), report=MarkdownReportGenerator(),
+                llm, agent_version=agent_version, severity=rubric, clarification=StakeholderClarificationGenerator(llm),
             )
-            result = pipeline.run(args.input, args.output)
+            try:
+                result = pipeline.analyze(document)
+            except (StructuredResponseError, EvidenceError):
+                # A terminal validation error would repeat on every resume if the
+                # same problematic answers stayed in the checkpoint.
+                if checkpoint is not None:
+                    checkpoint.finish()
+                    checkpoint = None
+                raise
+            writer.write(result, args.output)
+            if checkpoint is not None:
+                if checkpoint.reused:
+                    LOG.info("Resumed using %d saved Gemini replies.", checkpoint.reused)
+                checkpoint.finish()
         LOG.info("Wrote %s (%d requirements, %d findings)", args.output,
                  len(result.requirements), len(result.review.findings))
     except ValidationError as exc:
@@ -73,8 +104,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     except LLMError as exc:
         print(f"Error: Gemini analysis failed. {exc}", file=sys.stderr)
+        if checkpoint is not None and (checkpoint.reused or checkpoint.saved):
+            print("Progress saved. Re-run the same command after Gemini access is restored.", file=sys.stderr)
         return 1
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, sqlite3.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 0

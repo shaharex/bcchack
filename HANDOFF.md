@@ -1,17 +1,65 @@
 # Validation handoff
 
+## Project to-do list
+
+- [x] Save the official-input Gemini run as [report_validated.md](reports/report_validated.md) and keep [report.md](report.md) as the historical baseline.
+- [x] Review the latest report against the six scenarios in the expert review's critical-defects summary. Record the results and check the cited quotations against the original text.
+- [x] Add regression cases for the five missed official scenarios and the explicit response-type control. The [evaluation suite](evals/README.md#official-report-regressions) passes its offline check.
+- [x] Run the six new regression cases with pinned Gemini Flash-Lite and save the [results](reports/official_regressions_flash_lite.json). The first two cases completed before a rate limit, and the remaining four completed in a follow-up run.
+- [ ] Improve detection of the purchase lifecycle and monthly-spend gaps and exact quotation of the refund event. Re-run the evidence checks and the amount-type control.
+- [x] Verify extraction roles for the API contract and response examples. The [coverage run](reports/api_extraction_coverage_flash_lite.json) classified all five previously excluded blocks as analyzed.
+- [ ] Repeat the lifecycle case and clean controls on a pinned Flash-Lite model. If the miss persists, compare a stronger pinned model on the same evidence and save the evaluation outputs.
+- [x] Remove 189 generated pytest artifacts from Git tracking, ignore future test-output directories and commit the retry/resume changes with their tests and documentation.
+
+## Official report review
+
+The latest [official report](reports/report_validated.md) used Gemini Flash-Lite and extracted 42 items. It lists three confirmed findings and three rejected candidates. All eight quotations in the confirmed findings match their cited source offsets. The report labels the agent `v0.2.0`. Record the exact commit in future comparison runs.
+
+The handoff previously referred to six scenarios without listing them. This review uses the six IDs in the [expert review's critical-defects summary](reports/claude/report_requirements_review.md#5-сводка) as the reference set. On that basis, the latest report detected **one scenario and missed five**.
+
+| Reference | Evidence in the official specification | Latest report |
+| --- | --- | --- |
+| D-20 · Second notification after changing the threshold | L39 caps notifications at one per card per month. L40 calls for a notification on reaching a new threshold regardless of the previous setting's history. After a first notification and a threshold increase, the two rules imply different results. | Missed. The requirements map includes both rules. |
+| D-33 · Purchase and posting in different months | L38 assigns spend by purchase date in Almaty. The January 31 purchase posted February 1 in L64 increases the February counter. Specify the purchase timestamp's timezone and settle which date governs. | Missed. The requirements map includes both the rule and the acceptance case. |
+| D-45 · Invalid amount returns HTTP 200 or 400 | L163 assigns 400 to invalid parameters. L165–L171 puts an invalid-amount error example under 200. L121 also specifies an `ERROR` result when an amount is rejected. | Found as `F-df4d182b92fade28c2f2c46e`. The example's heading establishes that the quoted error payload is shown under 200. |
+| D-29 · Reading settings and monthly spend | L29 shows settings and monthly spend. L52 requires a settings read through Part B. L103 mentions reading, but L108–L120 document the save operation. The read contract and source for monthly spend are unspecified. | Missed. The report recognizes the save operation without flagging the missing read contract. |
+| D-15 · Purchase lifecycle trigger | L38 counts posted purchases and L43 names the processing event. L23 sets the goal of informing the customer at purchase time, while L46 starts the dispatch deadline at event receipt. The contract needs to identify the lifecycle stage that triggers accounting and dispatch. | Missed. The report extracts the event and timing statements without resolving their relationship. |
+| D-26 · Inputs needed to attribute returns | L38 requires a return to adjust the original purchase's month. L43 and L49 leave the source of that relationship and the original purchase date unspecified. The API already names an `enabled` field at L144 and L157, so the actionable gap is the provenance of required data. | Missed. The report extracts the return rule and stored fields without linking the missing input to the accounting decision. |
+
+### Other findings and coverage
+
+- **GET used to save settings.** Retain `F-be13e7f22f1413ebd9af3eb1` as an API design concern, consistent with expert finding D-36. L104 and the request example at L109 both use GET. L120 explicitly changes state. The declared and example verbs agree.
+- **Response amount type.** Reclassify `F-3217baa39fde2081b85422f2` as a false positive for ambiguity. L143 defines an integer request field, L156 explicitly defines a string response field and L167 demonstrates the string. A request and response may specify different types.
+- **Rejected candidates.** The 200/201 classification and `200 … Created` heading merit a documentation clarification. The text gives no conflicting 201 outcome for the same request. The 403 heading contains a specific 404 rule for a foreign or missing card at L189–L193. Keep that outcome and clarify when 403 applies, if it is used.
+- **Coverage.** The map includes the relevant functional rules, sequence, timing, data, integration and acceptance passages. The coverage ledger labels all of L101–L114 as metadata even though it contains the method and request example. It also labels the 400, 401, 404 and 500 payloads as metadata. A targeted extraction-only run on those five blocks moved all five to analyzed and extracted nine specification facts. This comparison covers the contract block and four response bodies. [Coverage results](reports/api_extraction_coverage_flash_lite.json)
+
+## Official regression suite results
+
+All six synthetic regression cases completed on `gemini-3.5-flash-lite`. The [saved JSON](reports/official_regressions_flash_lite.json) preserves the case results and the rate-limit interruption between attempts.
+
+| Case | Result |
+| --- | --- |
+| Second notification after a threshold change | Detected with the expected citations. |
+| Purchase and posting in different months | Detected with the expected citations. |
+| Settings read and monthly spend | Partial. The confirmed finding correctly flags the missing settings read contract. It does not flag the missing source for monthly spend. |
+| Purchase lifecycle trigger | Missed during candidate generation. Zero candidates reached grounding. |
+| Refund attribution | The model proposed the missing purchase link. Grounding rejected the candidate because the quote did not match the refund-event block. |
+| Amount response type | Passed. Individual review covered the response field, and no finding was confirmed. |
+
+The harness scored two of three automatically scored issues and retrieved one of two cases requiring manual review. There were zero unexpected confirmed findings. The manual assessment above records the scope of the settings-read finding and the reason the refund candidate could not be confirmed.
+
 ## Baseline and reproducible checks
 
-The latest artifact is the root `report.md`. Keep it as the comparison run. Use `reports/claude/report.md` for the earlier Gemini run. The Opus and Sonnet reviews use different unit boundaries.
+Keep the root `report.md` as the historical comparison run. Use `reports/claude/report.md` for the earlier Gemini run. The Opus and Sonnet reviews use different unit boundaries.
 
 | Artifact | Units | Confirmed or author-reported findings |
 | --- | ---: | ---: |
-| Latest Gemini | 24 | 4 |
+| Historical Gemini baseline | 24 | 4 |
 | Earlier Gemini | 23 | 17 |
 | Opus reference | 44 | 57 |
 | Sonnet reference | 37 | 61 |
 
-The latest map represents seven section paths. All four finding quotations match the cited local source spans. Two findings request a way to detect duplicate deliveries and cite the same sentence. The specification already states the observable idempotency outcome. The six requested reference scenarios are absent from its confirmed list. In the older run, two recommendations ask for numeric bounds already given in the document. These are manual comparisons. They do not establish a population false-positive rate.
+The historical baseline map represents seven section paths. All four findings quote matching source spans. Two findings request a way to detect duplicate deliveries and cite the same sentence. L52 already states that repeat delivery preserves the total. In the older run, two recommendations ask for numeric bounds already given in the document.
 
 ## Live synthetic evaluation
 
@@ -31,15 +79,8 @@ The raw measurements are in [the first run](reports/synthetic_eval.json) and [th
 
 A [targeted follow-up](reports/synthetic_eval_lifecycle.json) explicitly tested competing event milestones against a deadline. Flash-Lite still produced no candidate for that fixture, and the clean control remained clear. Review whether “completion” is an adequate definition of settlement for this domain, then compare the cross-review stage with a stronger pinned model using the same passages and verification policy. The production model setting was preserved.
 
-## Remaining evaluation
+## Repeating the evaluation
 
-1. Run the official input through the CLI once Gemini access for this file is approved. Pin the baseline model ID for comparison. Retain its new output separately.
+Use `python -m evals.run --mode check` for the offline fixtures and the controlled live procedure in [evals/README.md](evals/README.md) for model comparisons. Examine the two clean controls, proposed omission findings and duplicates manually. An incomplete provider run supplies measurements only for its completed cases.
 
-   ```powershell
-   $env:GEMINI_MODEL = "gemini-3.5-flash-lite"
-   python -m requirements_validator --input mdfile/requirements.md --output reports/report_validated.md
-   ```
-
-2. Check each of the six reference scenarios against the original text and the new finding's exact citations. Record missed scenarios, credible new issues, repeated decisions and rejected candidates resolved by an explicit passage. Data provenance can be unspecified even when a viable implementation exists. The validator's coverage ledger accounts for parser blocks. Check that the role assigned to each substantive section is appropriate.
-3. Use `python -m evals.run --mode check` for the offline fixtures. Use the controlled live procedure in [evals/README.md](evals/README.md) for model comparisons. Examine the two clean controls, all proposed omission findings and duplicates manually. An incomplete provider run supplies measurements only for its completed cases.
-4. Consider a more capable model for cross-requirement reasoning only if the same evidence-backed omissions persist in repeated pinned runs. Retain the existing extraction, verification, severity and reporting stages for a controlled comparison.
+When repeating the official run, record the model and commit, and use a new output path so the saved reports remain comparable.

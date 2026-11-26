@@ -6,7 +6,8 @@ from requirements_validator.extractor import Extraction, RequirementsExtractor
 from requirements_validator.models import ParsedDocument, QualityCriterion, SourceBlock
 from requirements_validator.ports import StructuredLLM
 from requirements_validator.reviewers import (
-    FOCUSED_CHECKS, Assessment, FocusedReview, IndividualReview, RelationPlan, RelationReviews, RelationRow,
+    FOCUSED_CHECKS, Assessment, FocusedReview, IndividualReview, IndividualReviews, RelationPlan, RelationReviews,
+    RelationRow, TargetReview,
 )
 
 
@@ -60,6 +61,15 @@ def matrix(*findings):
 @pytest.fixture
 def assessments():
     return matrix
+
+
+@pytest.fixture
+def batch_assessments():
+    def review(target_ids=("R-001", "R-002", "R-003")):
+        return IndividualReviews(reviews=tuple(
+            TargetReview(target_id=target_id, assessments=matrix().assessments) for target_id in target_ids
+        ))
+    return review
 
 
 @pytest.fixture

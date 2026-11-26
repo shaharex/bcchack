@@ -1,13 +1,21 @@
 import json
 import re
 import shlex
+from collections.abc import Iterable
 from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
-from .prompts import CROSS_RULES, FOCUSED_CHECKS, FOCUSED_RULES, INDIVIDUAL_RULES, LINK_PLAN, RELATION_RULES
+from .prompts import (
+    CROSS_RULES, DEPENDENCY_RULES, FOCUSED_CHECKS, FOCUSED_RULES, INDIVIDUAL_RULES, LINK_PLAN,
+    QUOTE_REPAIR_RULES, RELATION_RULES,
+)
+from .source import EvidenceError, SourceIndex
 from .models import Outcome, ParsedDocument, ProposedEvidence, QualityCriterion, Relationship, Requirement, Scenario, Schema, Text
 from .ports import StructuredLLM, StructuredResponseError
+
+
+INDIVIDUAL_BATCH_SIZE = 4
 
 
 class ProposedFinding(Schema):
@@ -45,6 +53,14 @@ class IndividualReview(Schema):
         return self
 
 
+class TargetReview(IndividualReview):
+    target_id: Text
+
+
+class IndividualReviews(Schema):
+    reviews: tuple[TargetReview, ...]
+
+
 class DependencyGap(Schema):
     subject: Text
     consumer_needs: Text
@@ -67,9 +83,23 @@ class DependencyGap(Schema):
                                evidence=(self.consumer, self.contract), recommendation=self.recommendation)
 
 
+class DependencyReview(Schema):
+    dependency_gaps: tuple[DependencyGap, ...]
+
+
 class SpecificationReview(Schema):
     findings: tuple[ProposedFinding, ...]
     dependency_gaps: tuple[DependencyGap, ...] = ()
+
+
+class QuoteRepair(Schema):
+    citation: int = Field(ge=0)
+    quote: Text
+    occurrence: int | None = Field(default=None, ge=1)
+
+
+class QuoteRepairs(Schema):
+    repairs: tuple[QuoteRepair, ...]
 
 
 class ConflictSide(Schema):
@@ -203,8 +233,7 @@ class IndividualReviewer:
         instruction = INDIVIDUAL_RULES
         payload = {"document": document.model_dump(), "target": requirement.model_dump()}
         if requirements:
-            payload["index"] = [{"id": r.id, "block": r.source.location.block_id,
-                                 "quote": r.source.quote} for r in requirements if r.id != requirement.id]
+            payload["index"] = self._index(r for r in requirements if r.id != requirement.id)
         payload_json = json.dumps(payload, ensure_ascii=False)
         try:
             return self.llm.generate(instruction, payload_json, IndividualReview)
@@ -212,6 +241,36 @@ class IndividualReviewer:
             criteria = ", ".join(QualityCriterion)
             retry = f"{instruction}\nReturn exactly seven assessments in this order: {criteria}."
             return self.llm.generate(retry, payload_json, IndividualReview)
+
+    @staticmethod
+    def _index(requirements: Iterable[Requirement]) -> list[dict[str, str]]:
+        return [{"id": r.id, "block": r.source.location.block_id, "quote": r.source.quote} for r in requirements]
+
+    def review_batch(self, document: ParsedDocument, targets: tuple[Requirement, ...],
+                     requirements: tuple[Requirement, ...]) -> dict[str, IndividualReview]:
+        if len(targets) == 1:
+            target, = targets
+            return {target.id: self.review(document, target, requirements)}
+        ids = {target.id for target in targets}
+        payload = {
+            "document": document.model_dump(),
+            "targets": [r.model_dump() for r in targets],
+            "index": self._index(r for r in requirements if r.id not in ids),
+        }
+        instruction = INDIVIDUAL_RULES + """
+Review each supplied target independently. In reviews, return one review per target,
+copying its id to target_id. Include all seven criteria for every target.
+Keep justifications for passing criteria brief."""
+        try:
+            batch = self.llm.generate(instruction, json.dumps(payload, ensure_ascii=False), IndividualReviews)
+            reviews = {item.target_id: IndividualReview(assessments=item.assessments) for item in batch.reviews}
+            if len(batch.reviews) != len(targets) or reviews.keys() != ids:
+                raise StructuredResponseError("individual review returned missing, duplicate or unknown target IDs")
+            return reviews
+        except StructuredResponseError:
+            midpoint = len(targets) // 2
+            return (self.review_batch(document, targets[:midpoint], requirements)
+                    | self.review_batch(document, targets[midpoint:], requirements))
 
 
 class CrossRequirementReviewer:
@@ -223,6 +282,15 @@ class CrossRequirementReviewer:
         payload = self._payload(document, requirements)
         raw = self.llm.generate(instruction, json.dumps(payload, ensure_ascii=False), SpecificationReview)
         return SpecificationReview(findings=raw.findings + tuple(g.as_finding() for g in raw.dependency_gaps))
+
+    def review_dependencies(self, document: ParsedDocument,
+                            requirements: tuple[Requirement, ...]) -> SpecificationReview:
+        payload = json.dumps(self._payload(document, requirements), ensure_ascii=False)
+        try:
+            review = self.llm.generate(DEPENDENCY_RULES, payload, DependencyReview)
+        except StructuredResponseError:
+            review = self.llm.generate(DEPENDENCY_RULES + "\nReturn a dependency_gaps array.", payload, DependencyReview)
+        return SpecificationReview(findings=tuple(gap.as_finding() for gap in review.dependency_gaps))
 
     def review_focused(self, document: ParsedDocument, requirements: tuple[Requirement, ...]) -> SpecificationReview:
         payload = json.dumps(self._payload(document, requirements), ensure_ascii=False)
@@ -284,6 +352,57 @@ class CrossRequirementReviewer:
                     instruction += "\nReturn every link index exactly once; ground the two observations in the selected source."
             findings.extend(f for row in rows if (f := row.as_finding()) is not None)
         return SpecificationReview(findings=tuple(findings))
+
+    def repair_quotes(self, document: ParsedDocument, requirements: tuple[Requirement, ...],
+                      findings: tuple[ProposedFinding, ...]) -> tuple[ProposedFinding, ...]:
+        index = SourceIndex(document)
+        spans = {r.id: r.source.location for r in requirements}
+        invalid = []
+        blocks = {}
+        for finding_number, finding in enumerate(findings):
+            for evidence_number, evidence in enumerate(finding.evidence):
+                block = index.blocks.get(evidence.block_id)
+                if block is None:
+                    continue
+                try:
+                    index.resolve(evidence, within=spans.get(evidence.requirement_id))
+                except EvidenceError:
+                    invalid.append((finding_number, evidence_number, evidence))
+                    blocks[block.id] = block.text
+        if not invalid:
+            return findings
+
+        payload = {
+            "blocks": blocks,
+            "invalid_citations": [
+                {"citation": number, "claim": findings[finding].explanation,
+                 "evidence": evidence.model_dump()}
+                for number, (finding, _, evidence) in enumerate(invalid)
+            ],
+        }
+        try:
+            reply = self.llm.generate(QUOTE_REPAIR_RULES, json.dumps(payload, ensure_ascii=False), QuoteRepairs)
+        except StructuredResponseError:
+            return findings
+
+        by_citation = {repair.citation: repair for repair in reply.repairs}
+        if len(by_citation) != len(reply.repairs):
+            return findings
+        updated = list(findings)
+        for number, (finding_number, evidence_number, evidence) in enumerate(invalid):
+            repair = by_citation.get(number)
+            if repair is None:
+                continue
+            replacement = evidence.model_copy(update={"quote": repair.quote, "occurrence": repair.occurrence})
+            try:
+                index.resolve(replacement, within=spans.get(evidence.requirement_id))
+            except EvidenceError:
+                continue
+            finding = updated[finding_number]
+            citations = list(finding.evidence)
+            citations[evidence_number] = replacement
+            updated[finding_number] = finding.model_copy(update={"evidence": tuple(citations)})
+        return tuple(updated)
 
     @staticmethod
     def _payload(document: ParsedDocument, requirements: tuple[Requirement, ...]) -> dict:

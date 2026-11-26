@@ -13,6 +13,11 @@ as specification facts. Preserve acceptance rows as complete given/action/result
 Keep related conditions together as compound_requirement when splitting loses meaning.
 For tables with contract or acceptance data cover each substantive row. Distinguish
 unfilled checklists, headings, metadata and supporting definitions from obligations.
+Classify a populated HTTP method, request URL and request command as specification_fact,
+including when they share a table with authors, team names or placeholders.
+Classify API response examples, including JSON error bodies, as specification_fact.
+Preserve the status association where indicated. Prefer an explicit nearby status marker
+over a broader heading. When the status is unspecified, describe the payload only.
 Classify every block without a unit in excluded and briefly explain the choice.
 In a mixed table, classify a non-requirement row under excluded_passages with an
 exact row quotation and reason. Do not invent an obligation for a metadata row.
@@ -51,11 +56,17 @@ identity, reset boundaries, timing and precedence. Report only supported conflic
 Compare time attribution rules against acceptance cases, examples, and event processing
 rules. Trace an event whose occurrence and posting fall in different reporting periods
 in the stated timezone. Identify the counter or period that each passage says to update.
-Also trace start and stop conditions for time-bound obligations. List the lifecycle
-milestones the document names. Is the triggering term explicitly mapped to a single
-milestone? When two stages are plausible, calculate the observable deadline or state
-under each interpretation. Include citations for the obligation, stage definitions
-and intervening duration if provided. Check whether a defined term settles the choice.""",
+""",
+    "lifecycle_trigger": """
+Trace a single event through each milestone explicitly described in the source.
+Separate the time of the user's action, the time the system recognizes the event,
+and the start of any deadline measured from receipt. Identify the exact term that
+triggers the state change or notification. Does the source define which milestone
+that term refers to? For two plausible readings, show which state changes or which
+clock starts at each stage. Use the concrete timing difference when given, or
+describe what happens between the stages. Cite the named milestones and trigger.
+Check whether a definition settles the mapping. A timing goal and a deadline
+measured from receipt can coexist when the triggering stage is clearly specified.""",
     "validation_response": """
 For the same operation and invalid input, compare the HTTP status and result required
 by status tables, validation steps, and response examples. Check in particular whether an
@@ -94,6 +105,11 @@ and writes separately with documented operations and examples. For a missing dep
 cite both the consuming rule and the closest documented producer/contract. Explain
 which value or decision cannot be derived from this specification. Account for external
 sources and derived values; do not prescribe a database schema.
+Trace each displayed value independently. An operation that reads stored settings
+does not automatically provide a computed total. Likewise, a reference to a current
+event does not by itself identify the prior event whose state must be changed.
+Record separate dependency gaps for values with distinct missing sources. Quote the
+actual producer's supplied fields, even when the necessary field is absent.
 For dependency_gaps record each necessary consumer input, the closest available
 contract and exactly which observable decision remains open. Cite the consumer and
 contract separately. If a different producer or a derivation resolves the need,
@@ -105,6 +121,20 @@ or tests change. Compare status descriptions, headings and actual response paylo
 Use ambiguity for multiple plausible interpretations, completeness for a required
 unspecified dependency. For contradictions provide a scenario with two cited outcomes,
 using zero-based indices in evidence. Include relevant facts outside the inventory."""
+
+DEPENDENCY_RULES = SOURCE_RULES + """
+Review only the provenance of values and operations promised to a consumer.
+For each screen or report, list its displayed values mentally and trace each
+separately from source or calculation to delivery. For each event that updates a
+prior result, trace how the event identifies that prior result. A settings read
+and a computed total have separate inputs and delivery paths. Finding one missing
+path does not settle the others. Data calculated elsewhere satisfies a consumer
+only when a documented interface or derivation makes it available to that consumer.
+For each missing path, name the missing value or capability, cite the consuming
+obligation and the closest documented contract, and state the observable consequence.
+Quote the actual contract, including its listed inputs, verbatim. If the contract
+is complete or the consumer can derive the value, omit the gap. Avoid prescribing
+a particular transport, HTTP method, field name or storage design."""
 
 FOCUSED_RULES = SOURCE_RULES + """
 Perform only the comparison below. Use the entire specification to check for
@@ -147,17 +177,27 @@ For a demand/supply pair, name the value or operation that is needed and exactly
 the available interface or event supplies. Can the specified outcome be obtained from
 those inputs? Describe a missing read capability as a contract gap. A particular HTTP
 verb, database column or storage strategy is mandatory only if the source requires it.
+For a missing link to a prior event, quote the actual event contract as written.
+Do not insert the missing field into the quoted source.
 Keep each field concise; the case describes the input state, the two observations give
 the specific outputs, and the consequence names the downstream decision once.
 For two rules, apply both to the same entity, state and time. For timing
 terms, substitute each plausible event stage and calculate how the observable result
-changes. Cite other relevant qualifications in extra_evidence. Use the full document
+changes. If an existing trigger term could refer to either of two named stages,
+classify those competing readings as ambiguity. Cite the stages, trigger and
+affected clock or outcome. Cite other relevant qualifications in extra_evidence. Use the full document
 to check definitions, scoped exceptions and alternative providers.
 Record both observations under first and second, with exact quotations and expected_outcome
 in Russian. Choose compatible when they can be satisfied together or the decision is
 left to implementation. Choose missing_dependency, ambiguity or contradiction only
 when the two observations establish that specific issue. Use unrelated when there is
 no meaningful pair. For a defect provide a short subject, consequence and correction."""
+
+QUOTE_REPAIR_RULES = SOURCE_RULES + """
+For each indexed invalid citation, find a verbatim replacement in the supplied
+source block that supports the same claim and serves the same role. Copy it from the
+block exactly. Omit an item if this block does not support the claim. Do not supply
+new findings, change the claim, or add words describing a missing value to a quote."""
 
 VERIFY_RULES = SOURCE_RULES + """
 Independently adjudicate every numbered candidate against the whole source. Copy the
@@ -166,7 +206,9 @@ tables, column headers, parent headings and exceptions for a resolution. Test th
 candidate's actual claim, not whether its proposed implementation is necessary.
 For a contradiction apply both statements to the same actor, state, time and action.
 If two outcomes remain possible because priority or terminology is ambiguous, the
-ambiguity itself can be a supported defect. Severity uncertainty is not disproof.
+ambiguity itself can be a supported defect. Do not assume an undefined event maps
+to one stage when verifying a claim that depends on that mapping. Severity uncertainty
+is not disproof.
 For omissions distinguish missing observable behavior/data provenance from a choice of
 database columns, algorithm or transport. If an equivalent rule exists elsewhere,
 return unsupported and cite resolving_evidence verbatim. For an unresolved hypothesis
