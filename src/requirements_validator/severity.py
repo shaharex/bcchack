@@ -26,6 +26,14 @@ DEFAULT_RULES = {
     Criterion.FEASIBILITY: SeverityRule("medium", "Нужно уточнить применимые ограничения и допустимое поведение."),
     Criterion.ATOMICITY: SeverityRule("low", "Разделение условий упростит их независимую проверку."),
     Criterion.IMPLEMENTATION_CONSTRAINT: SeverityRule("low", "Ограничение затрагивает выбор решения для указанного требования."),
+    Criterion.NECESSITY: SeverityRule("low", "Нужно подтвердить, какой цели или потребности служит требование."),
+    Criterion.CORRECTNESS: SeverityRule("medium", "Неверный факт в требовании приведёт к неверной реализации или тесту."),
+    Criterion.CONFORMANCE: SeverityRule("low", "Документ отклоняется от собственного шаблона или соглашений."),
+    Criterion.COMPREHENSIBILITY: SeverityRule("low", "Читатель может понять требования по-разному без определений и структуры."),
+    Criterion.VALIDATABILITY: SeverityRule("medium", "Нельзя показать, что набор требований достигает заявленных целей."),
+    Criterion.RANKING: SeverityRule("low", "Без приоритета и стабильности нельзя планировать объём и порядок работ."),
+    Criterion.MODIFIABILITY: SeverityRule("low", "Изменение одного требования придётся вносить в нескольких местах."),
+    Criterion.TRACEABILITY: SeverityRule("low", "Без идентификаторов и ссылок нельзя проследить покрытие требований."),
 }
 
 LOCAL_CONSISTENCY = SeverityRule("medium", "Нужно уточнить согласованность формулировки и ожидаемое поведение.")

@@ -89,6 +89,25 @@
     </tbody>
   </table>
 
+  {% if report.compliance %}
+  <table>
+    <caption><h2>Соответствие ISO/IEC/IEEE 29148:2018 и IEEE Std 830-1998</h2></caption>
+    <colgroup><col style="width: 20%" /><col style="width: 20%" /><col style="width: 16%" /><col style="width: 30%" /><col style="width: 14%" /></colgroup>
+    <thead><tr><th scope="col">Стандарт, пункт</th><th scope="col">Свойство</th><th scope="col">Результат</th><th scope="col">Основание</th><th scope="col">Замечания</th></tr></thead>
+    <tbody>
+    {% for row in report.compliance %}
+      <tr>
+        <td>{{ row.standard }}, п. {{ row.clause }}</td>
+        <td>{{ row.property }}</td>
+        <td class="{{ compliance_classes[row.status] }}">{{ row.status }}</td>
+        <td>{{ row.basis }}</td>
+        <td>{{ row.findings | join(', ') or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <h2>5. Сводка</h2>
   <table class="summary">
     <colgroup><col style="width: 77%" /><col style="width: 23%" /></colgroup>

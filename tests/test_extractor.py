@@ -26,7 +26,9 @@ def test_decomposition_and_stable_source_ids(document, requirements, llm, extrac
     updated = RequirementsExtractor(llm).extract(document)
     assert updated[-1].original_id is None
     assert [r.id for r in updated] == ["R-001", "R-002", "R-003"]
-    assert [r.source.location.start for r in updated] == sorted(r.source.location.start for r in updated)
+    assert [r.source.location.start for r in updated] == sorted(
+        r.source.location.start for r in updated
+    )
     assert {r.id for r in updated} == {r.id for r in requirements}
 
 
@@ -58,11 +60,16 @@ def test_extraction_retries_unresolvable_quotes(document, llm, extraction):
     requirements = RequirementsExtractor(llm).extract(document)
     assert len(requirements) == 3
     assert llm.generate.call_count == 2
-    assert all(requirement.source.quote != "Несуществующая цитата" for requirement in requirements)
+    assert all(
+        requirement.source.quote != "Несуществующая цитата"
+        for requirement in requirements
+    )
 
 
 @pytest.mark.parametrize(("group", "label"), [(0, "Р-2"), (1, "Р-1")])
-def test_real_identifier_from_another_clause_is_rejected(document, extraction, llm, group, label):
+def test_real_identifier_from_another_clause_is_rejected(
+    document, extraction, llm, group, label
+):
     data = extraction.model_dump(mode="json")
     data["groups"][group]["original_id"]["quote"] = label
     llm.generate.return_value = Extraction.model_validate(data)
@@ -73,16 +80,28 @@ def test_real_identifier_from_another_clause_is_rejected(document, extraction, l
 def test_separate_heading_identifier_can_apply_to_multiple_atoms(extraction, llm):
     section = ("Выдача", "Р-1")
     heading = SourceBlock(id="heading", text="### Р-1", section=section)
-    body = SourceBlock(id="b1", text="Показать остаток быстро и сохранить чек.", section=section)
+    body = SourceBlock(
+        id="b1", text="Показать остаток срочно и сохранить чек.", section=section
+    )
     doc = ParsedDocument(id="headed", title="Тест", blocks=(heading, body))
-    group = extraction.groups[0].model_copy(update={
-        "original_id": Anchor(block_id="heading", quote="Р-1"),
-        "source": Anchor(block_id="b1", quote=body.text),
-    })
-    llm.generate.return_value = Extraction.model_validate({
-        "groups": [group.model_dump(mode="json")],
-        "excluded": [{"block_id": "heading", "kind": "metadata", "reason": "Идентификатор раздела."}],
-    })
+    group = extraction.groups[0].model_copy(
+        update={
+            "original_id": Anchor(block_id="heading", quote="Р-1"),
+            "source": Anchor(block_id="b1", quote=body.text),
+        }
+    )
+    llm.generate.return_value = Extraction.model_validate(
+        {
+            "groups": [group.model_dump(mode="json")],
+            "excluded": [
+                {
+                    "block_id": "heading",
+                    "kind": "metadata",
+                    "reason": "Идентификатор раздела.",
+                }
+            ],
+        }
+    )
     first, second = RequirementsExtractor(llm).extract(doc)
     assert first.original_id == second.original_id
     assert first.original_id.location.block_id == "heading"
@@ -96,17 +115,26 @@ def test_assessment_requires_every_criterion_once(assessments):
 
 
 def test_every_unrepresented_block_requires_explicit_exclusion(llm):
-    document = ParsedDocument(id="one", title="Тест", blocks=(SourceBlock(id="only", text="Контекст."),))
+    document = ParsedDocument(
+        id="one", title="Тест", blocks=(SourceBlock(id="only", text="Контекст."),)
+    )
     incomplete = Extraction(groups=())
     llm.generate.side_effect = [incomplete, incomplete]
-    with pytest.raises(EvidenceError, match="Missing or inconsistent block classification"):
+    with pytest.raises(
+        EvidenceError, match="Missing or inconsistent block classification"
+    ):
         RequirementsExtractor(llm).extract(document)
 
 
 def test_split_retry_empty_inventory_classifies_only_requested_blocks(llm):
-    doc = ParsedDocument(id="split", title="Тест", blocks=(
-        SourceBlock(id="a", text="A"), SourceBlock(id="b", text="B"),
-    ))
+    doc = ParsedDocument(
+        id="split",
+        title="Тест",
+        blocks=(
+            SourceBlock(id="a", text="A"),
+            SourceBlock(id="b", text="B"),
+        ),
+    )
     requested = []
 
     def respond(_instruction, payload, _schema):
@@ -116,9 +144,18 @@ def test_split_retry_empty_inventory_classifies_only_requested_blocks(llm):
         requested.append(block_ids)
         if len(block_ids) > 1:
             return Extraction(groups=())
-        return Extraction.model_validate({"groups": [], "excluded": [{
-            "block_id": block_ids[0], "kind": "metadata", "reason": "Нет обязательства.",
-        }]})
+        return Extraction.model_validate(
+            {
+                "groups": [],
+                "excluded": [
+                    {
+                        "block_id": block_ids[0],
+                        "kind": "metadata",
+                        "reason": "Нет обязательства.",
+                    }
+                ],
+            }
+        )
 
     llm.generate.side_effect = respond
     requirements, coverage = RequirementsExtractor(llm).extract_with_coverage(doc)
@@ -129,12 +166,21 @@ def test_split_retry_empty_inventory_classifies_only_requested_blocks(llm):
 
 def test_substantive_table_row_cannot_be_omitted(llm):
     text = "| Правило | Результат |\n| --- | --- |\n| A | один |\n| B | два |\n"
-    doc = ParsedDocument(id="table", title="Таблица", blocks=(SourceBlock(id="t", text=text),))
+    doc = ParsedDocument(
+        id="table", title="Таблица", blocks=(SourceBlock(id="t", text=text),)
+    )
     row = "| A | один |"
-    incomplete = Extraction.model_validate({"groups": [{
-        "source": {"block_id": "t", "quote": row}, "original_id": None,
-        "atoms": [{"statement": "Для A результат один.", "source": None}],
-    }]})
+    incomplete = Extraction.model_validate(
+        {
+            "groups": [
+                {
+                    "source": {"block_id": "t", "quote": row},
+                    "original_id": None,
+                    "atoms": [{"statement": "Для A результат один.", "source": None}],
+                }
+            ]
+        }
+    )
     llm.generate.side_effect = [incomplete, incomplete]
     with pytest.raises(EvidenceError, match="Uncovered table row.*B"):
         RequirementsExtractor(llm).extract(doc)
@@ -143,12 +189,28 @@ def test_substantive_table_row_cannot_be_omitted(llm):
 def test_line_anchors_ground_repeated_text_in_the_correct_original_clause(llm):
     block = SourceBlock(id="P7", text="A: print receipt\r\nB: print receipt\r\n")
     doc = ParsedDocument(id="repeat", title="Receipts", blocks=(block,))
-    llm.generate.return_value = Extraction.model_validate({"groups": [{
-        "source": {"block_id": block.id, "first_line": line, "last_line": line},
-        "original_id": {"block_id": block.id, "quote": label},
-        "atoms": [{"statement": label + " print receipt", "kind": "specification_fact",
-                   "source": {"block_id": block.id, "quote": "print receipt"}}],
-    } for line, label in [(2, "B:"), (1, "A:")]]})
+    llm.generate.return_value = Extraction.model_validate(
+        {
+            "groups": [
+                {
+                    "source": {
+                        "block_id": block.id,
+                        "first_line": line,
+                        "last_line": line,
+                    },
+                    "original_id": {"block_id": block.id, "quote": label},
+                    "atoms": [
+                        {
+                            "statement": label + " print receipt",
+                            "kind": "specification_fact",
+                            "source": {"block_id": block.id, "quote": "print receipt"},
+                        }
+                    ],
+                }
+                for line, label in [(2, "B:"), (1, "A:")]
+            ]
+        }
+    )
     first, second = RequirementsExtractor(llm).extract(doc)
     assert first.source.location.start == block.text.index("print receipt")
     assert second.source.location.start == block.text.rindex("print receipt")
@@ -157,76 +219,152 @@ def test_line_anchors_ground_repeated_text_in_the_correct_original_clause(llm):
 
 
 def test_mixed_table_classifies_metadata_row_without_inventing_a_requirement(llm):
-    text = "| Field | Value |\n| --- | --- |\n| API | Read balance |\n| Author | Example |"
-    doc = ParsedDocument(id="mixed", title="Mixed table", blocks=(SourceBlock(id="t", text=text),))
-    llm.generate.return_value = Extraction.model_validate({"groups": [{
-        "source": {"block_id": "t", "first_line": 3, "last_line": 3}, "original_id": None,
-        "atoms": [{"statement": "Read balance"}],
-    }], "excluded_passages": [{
-        "source": {"block_id": "t", "quote": "| Author | Example |"},
-        "kind": "metadata", "reason": "Editor attribution",
-    }]})
+    text = (
+        "| Field | Value |\n| --- | --- |\n| API | Read balance |\n| Author | Example |"
+    )
+    doc = ParsedDocument(
+        id="mixed", title="Mixed table", blocks=(SourceBlock(id="t", text=text),)
+    )
+    llm.generate.return_value = Extraction.model_validate(
+        {
+            "groups": [
+                {
+                    "source": {"block_id": "t", "first_line": 3, "last_line": 3},
+                    "original_id": None,
+                    "atoms": [{"statement": "Read balance"}],
+                }
+            ],
+            "excluded_passages": [
+                {
+                    "source": {"block_id": "t", "quote": "| Author | Example |"},
+                    "kind": "metadata",
+                    "reason": "Editor attribution",
+                }
+            ],
+        }
+    )
     (unit,), (entry,) = RequirementsExtractor(llm).extract_with_coverage(doc)
     assert unit.source.quote == "| API | Read balance |"
     assert entry.context_passages[0].source.quote == "| Author | Example |"
 
 
-@pytest.mark.parametrize("exclude_entire_table", [True, False], ids=["whole-table", "individual-rows"])
-def test_api_contract_rows_survive_table_metadata_classification(llm, exclude_entire_table):
+@pytest.mark.parametrize(
+    "exclude_entire_table", [True, False], ids=["whole-table", "individual-rows"]
+)
+def test_api_contract_rows_survive_table_metadata_classification(
+    llm, exclude_entire_table
+):
     facts = (
         "| **REST type** | GET |",
         "| **Request URL** | /alerts/limit |",
         "| **CURL** | `curl -G https://example.test/alerts/limit` |",
     )
     metadata = ("| Author | Example |", "| **Request URL** | — |")
-    table = SourceBlock(id="contract", text="\n".join(("| Field | Value |", "| --- | --- |", *facts, *metadata)))
+    table = SourceBlock(
+        id="contract",
+        text="\n".join(("| Field | Value |", "| --- | --- |", *facts, *metadata)),
+    )
     doc = ParsedDocument(id="api", title="API", blocks=(table,))
     groups = [
-        {"source": {"block_id": table.id, "quote": row}, "original_id": None,
-         "atoms": [{"statement": row, "kind": "specification_fact"}]}
+        {
+            "source": {"block_id": table.id, "quote": row},
+            "original_id": None,
+            "atoms": [{"statement": row, "kind": "specification_fact"}],
+        }
         for row in facts
     ]
     excluded_passages = [
-        {"source": {"block_id": table.id, "quote": row}, "kind": "metadata", "reason": "General properties."}
+        {
+            "source": {"block_id": table.id, "quote": row},
+            "kind": "metadata",
+            "reason": "General properties.",
+        }
         for row in (*facts, *metadata)
     ]
     if exclude_entire_table:
-        misclassified = {"groups": [], "excluded": [
-            {"block_id": table.id, "kind": "metadata", "reason": "General properties."},
-        ]}
+        misclassified = {
+            "groups": [],
+            "excluded": [
+                {
+                    "block_id": table.id,
+                    "kind": "metadata",
+                    "reason": "General properties.",
+                },
+            ],
+        }
     else:
-        misclassified = {"groups": groups[:1], "excluded_passages": excluded_passages[1:]}
-    corrected = {"groups": groups, "excluded_passages": excluded_passages[len(facts):]}
-    llm.generate.side_effect = [Extraction.model_validate(draft) for draft in (misclassified, corrected)]
+        misclassified = {
+            "groups": groups[:1],
+            "excluded_passages": excluded_passages[1:],
+        }
+    corrected = {"groups": groups, "excluded_passages": excluded_passages[len(facts) :]}
+    llm.generate.side_effect = [
+        Extraction.model_validate(draft) for draft in (misclassified, corrected)
+    ]
 
     requirements, (entry,) = RequirementsExtractor(llm).extract_with_coverage(doc)
 
     assert [r.source.quote for r in requirements] == list(facts)
     assert all(r.kind == "specification_fact" for r in requirements)
     assert entry.kind == "analyzed"
-    assert [passage.source.quote for passage in entry.context_passages] == list(metadata)
+    assert [passage.source.quote for passage in entry.context_passages] == list(
+        metadata
+    )
     retry_payload = json.loads(llm.generate.call_args.args[1])
     assert retry_payload["previous_validation_error"].startswith("API contract row")
 
 
-@pytest.mark.parametrize("section", ["400. Bad Request", "HTTP 401 Unauthorized", "Пример ответа"])
+@pytest.mark.parametrize(
+    "section", ["400. Bad Request", "HTTP 401 Unauthorized", "Пример ответа"]
+)
 def test_json_response_example_is_retried_when_classified_as_metadata(llm, section):
     body = '{"message":"Ошибка"}'
-    block = SourceBlock(id="body", text=f"```json\n{body}\n```", section=("REST API", section))
+    block = SourceBlock(
+        id="body", text=f"```json\n{body}\n```", section=("REST API", section)
+    )
     doc = ParsedDocument(id="api", title="API", blocks=(block,))
     llm.generate.side_effect = [
-        Extraction.model_validate({"groups": [], "excluded": [
-            {"block_id": block.id, "kind": "metadata", "reason": "Illustration."},
-        ]}),
-        Extraction.model_validate({"groups": [
-            {"source": {"block_id": block.id, "first_line": 2, "last_line": 2}, "original_id": None,
-             "atoms": [{"statement": "Error response example.", "kind": "specification_fact"}]},
-        ]}),
+        Extraction.model_validate(
+            {
+                "groups": [],
+                "excluded": [
+                    {
+                        "block_id": block.id,
+                        "kind": "metadata",
+                        "reason": "Illustration.",
+                    },
+                ],
+            }
+        ),
+        Extraction.model_validate(
+            {
+                "groups": [
+                    {
+                        "source": {
+                            "block_id": block.id,
+                            "first_line": 2,
+                            "last_line": 2,
+                        },
+                        "original_id": None,
+                        "atoms": [
+                            {
+                                "statement": "Error response example.",
+                                "kind": "specification_fact",
+                            }
+                        ],
+                    },
+                ]
+            }
+        ),
     ]
 
     (requirement,), (entry,) = RequirementsExtractor(llm).extract_with_coverage(doc)
 
-    assert (requirement.source.quote, requirement.section, requirement.kind) == (body, block.section, "specification_fact")
+    assert (requirement.source.quote, requirement.section, requirement.kind) == (
+        body,
+        block.section,
+        "specification_fact",
+    )
     assert entry.kind == "analyzed"
     retry_payload = json.loads(llm.generate.call_args.args[1])
     assert retry_payload["previous_validation_error"].startswith("API response example")

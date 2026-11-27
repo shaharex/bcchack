@@ -3,7 +3,9 @@ from unittest.mock import Mock
 import pytest
 
 from requirements_validator.extractor import Extraction, RequirementsExtractor
-from requirements_validator.models import ParsedDocument, QualityCriterion, SourceBlock
+from requirements_validator.compliance import DocumentReview
+from requirements_validator.executable_model import ExecutableModel
+from requirements_validator.models import DOCUMENT_CRITERIA, REQUIREMENT_CRITERIA, ParsedDocument, SourceBlock
 from requirements_validator.ports import StructuredLLM
 from requirements_validator.reviewers import (
     FOCUSED_CHECKS, Assessment, FocusedReview, IndividualReview, IndividualReviews, LifecycleReview, RelationPlan, RelationReviews,
@@ -15,7 +17,7 @@ from requirements_validator.reviewers import (
 def document():
     return ParsedDocument(id="sample", title="Тест", blocks=(
         SourceBlock(id="b1", page=2, section=("Выдача",),
-                    text="Р-1: Показать остаток быстро и сохранить чек.\nР-2: Скрыть остаток."),
+                    text="Р-1: Показать остаток срочно и сохранить чек.\nР-2: Скрыть остаток."),
         SourceBlock(id="b2", section=("Глоссарий",), text="Клиент — владелец счёта."),
     ))
 
@@ -26,9 +28,9 @@ def extraction():
         return {"block_id": "b1", "quote": quote}
 
     return Extraction.model_validate({"groups": [
-        {"source": anchor("Р-1: Показать остаток быстро и сохранить чек."),
+        {"source": anchor("Р-1: Показать остаток срочно и сохранить чек."),
          "original_id": anchor("Р-1"), "atoms": [
-             {"statement": "Показать остаток быстро.", "source": anchor("Показать остаток быстро")},
+             {"statement": "Показать остаток срочно.", "source": anchor("Показать остаток срочно")},
              {"statement": "Сохранить чек.", "source": anchor("сохранить чек")},
          ]},
         {"source": anchor("Р-2: Скрыть остаток."), "original_id": anchor("Р-2"),
@@ -51,7 +53,7 @@ def requirements(document, extraction, llm):
 
 def matrix(*findings):
     rows = []
-    for criterion in QualityCriterion:
+    for criterion in REQUIREMENT_CRITERIA:
         issues = tuple(f for f in findings if f.criterion == criterion)
         rows.append(Assessment(criterion=criterion, outcome="fail" if issues else "pass",
                                rationale="Оценка исходной формулировки.", findings=issues))
@@ -85,6 +87,20 @@ def skipped_relations():
         link=0, case="Положения не связаны.", first=None, second=None, outcome="unrelated",
         subject=None, consequence=None, correction=None,
     ),))
+
+
+@pytest.fixture
+def clean_document_review():
+    return DocumentReview(assessments=tuple(
+        Assessment(criterion=criterion, outcome="pass", rationale="Свойство выполняется.", findings=())
+        for criterion in DOCUMENT_CRITERIA
+    ))
+
+
+@pytest.fixture
+def empty_executable_model():
+    return ExecutableModel(rationale="Исполняемых правил нет.", events=(), state=(), updates=(),
+                           obligations=(), invariants=())
 
 
 @pytest.fixture

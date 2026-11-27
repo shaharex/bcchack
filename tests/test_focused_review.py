@@ -5,6 +5,8 @@ import pytest
 from pydantic import ValidationError
 
 from requirements_validator.aggregation import FindingsAggregator, Verdict, Verdicts
+from requirements_validator.compliance import DocumentReview
+from requirements_validator.executable_model import ExecutableModel
 from requirements_validator.extractor import Extraction
 from requirements_validator.models import QualityCriterion, SourceBlock
 from requirements_validator.parsers import MarkdownParser
@@ -129,7 +131,9 @@ def test_lifecycle_review_falls_back_after_two_invalid_responses(card_spec, llm)
         ("Для чужой карты возвращается 404, как и для отсутствующей карты.", "HTTP 404 по особому правилу"),
     ),
 ], ids=["second-push", "purchase-period", "invalid-amount", "foreign-card"])
-def test_focused_scenario_reaches_report(card_spec, llm, prompt_family, subject, scenario, first, second):
+def test_focused_scenario_reaches_report(
+    card_spec, llm, clean_document_review, empty_executable_model, prompt_family, subject, scenario, first, second,
+):
     matching_calls = []
 
     def respond(instruction, payload, schema):
@@ -146,6 +150,10 @@ def test_focused_scenario_reaches_report(card_spec, llm, prompt_family, subject,
             return SpecificationReview(findings=())
         if schema is RelationPlan:
             return RelationPlan(links=())
+        if schema is DocumentReview:
+            return clean_document_review
+        if schema is ExecutableModel:
+            return empty_executable_model
         if schema is LifecycleReview:
             return LifecycleReview(rationale="Другой сценарий.", outcome="not_applicable", checks=())
         if schema is FocusedReview:
@@ -182,7 +190,9 @@ def test_focused_scenario_reaches_report(card_spec, llm, prompt_family, subject,
 
 
 @pytest.mark.parametrize("claimed_curl_method", ["get", "POST"])
-def test_matching_get_and_curl_cannot_produce_focused_method_conflict(card_spec, llm, claimed_curl_method):
+def test_matching_get_and_curl_cannot_produce_focused_method_conflict(
+    card_spec, llm, clean_document_review, empty_executable_model, claimed_curl_method,
+):
     method_calls = []
 
     def respond(instruction, payload, schema):
@@ -199,6 +209,10 @@ def test_matching_get_and_curl_cannot_produce_focused_method_conflict(card_spec,
             return SpecificationReview(findings=())
         if schema is RelationPlan:
             return RelationPlan(links=())
+        if schema is DocumentReview:
+            return clean_document_review
+        if schema is ExecutableModel:
+            return empty_executable_model
         if schema is LifecycleReview:
             return LifecycleReview(rationale="Другой сценарий.", outcome="not_applicable", checks=())
         assert schema is FocusedReview  # No candidate should reach verification.

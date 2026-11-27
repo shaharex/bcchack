@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import shlex
 from collections.abc import Iterable
@@ -11,10 +12,14 @@ from .prompts import (
     LIFECYCLE_RULES, LINK_PLAN, QUOTE_REPAIR_RULES, RELATION_RULES,
 )
 from .source import EvidenceError, SourceIndex
-from .models import Anchor, Outcome, ParsedDocument, ProposedEvidence, QualityCriterion, Relationship, Requirement, Scenario, Schema, Text
+from .models import (
+    REQUIREMENT_CRITERIA, Anchor, Outcome, ParsedDocument, ProposedEvidence, QualityCriterion, Relationship, Requirement,
+    Scenario, Schema, Text,
+)
 from .ports import StructuredLLM, StructuredResponseError
 
 
+LOG = logging.getLogger(__name__)
 INDIVIDUAL_BATCH_SIZE = 4
 
 
@@ -48,9 +53,43 @@ class IndividualReview(Schema):
     @model_validator(mode="after")
     def complete_matrix(self) -> Self:
         criteria = [item.criterion for item in self.assessments]
-        if set(criteria) != set(QualityCriterion) or len(criteria) != len(QualityCriterion):
+        if set(criteria) != set(REQUIREMENT_CRITERIA) or len(criteria) != len(REQUIREMENT_CRITERIA):
             raise ValueError("each quality criterion must be evaluated exactly once")
         return self
+
+
+class LooseAssessment(Schema):
+    criterion: QualityCriterion
+    outcome: Outcome
+    rationale: Text
+    findings: tuple[ProposedFinding, ...] = ()
+
+
+class PartialReview(Schema):
+    """An assessment matrix that may omit or repeat criteria."""
+    assessments: tuple[LooseAssessment, ...]
+
+
+UNASSESSED = "Модель не вернула корректную оценку по этому критерию."
+
+
+def complete_review(partial: PartialReview | None) -> IndividualReview:
+    """Keep each valid assessment the model returned and mark the rest not assessable."""
+    kept: dict[QualityCriterion, Assessment] = {}
+    for item in partial.assessments if partial else ():
+        if item.criterion not in REQUIREMENT_CRITERIA or item.criterion in kept:
+            continue
+        findings = tuple(f for f in item.findings if f.criterion == item.criterion)
+        if (item.outcome == "fail") != bool(findings):
+            kept[item.criterion] = Assessment(criterion=item.criterion, outcome="not_assessable",
+                                              rationale=UNASSESSED, findings=())
+        else:
+            kept[item.criterion] = Assessment(criterion=item.criterion, outcome=item.outcome,
+                                              rationale=item.rationale, findings=findings)
+    return IndividualReview(assessments=tuple(
+        kept.get(c) or Assessment(criterion=c, outcome="not_assessable", rationale=UNASSESSED, findings=())
+        for c in REQUIREMENT_CRITERIA
+    ))
 
 
 class TargetReview(IndividualReview):
@@ -273,9 +312,20 @@ class IndividualReviewer:
         try:
             return self.llm.generate(instruction, payload_json, IndividualReview)
         except StructuredResponseError:
-            criteria = ", ".join(QualityCriterion)
-            retry = f"{instruction}\nReturn exactly seven assessments in this order: {criteria}."
-            return self.llm.generate(retry, payload_json, IndividualReview)
+            criteria = ", ".join(REQUIREMENT_CRITERIA)
+            retry = f"{instruction}\nReturn exactly {len(REQUIREMENT_CRITERIA)} assessments in this order: {criteria}."
+            try:
+                return self.llm.generate(retry, payload_json, IndividualReview)
+            except StructuredResponseError:
+                pass
+        # One malformed matrix must not abort the whole run. Accept what the model
+        # returned; any missing criterion is reported as not assessable.
+        LOG.warning("Accepting a partial criteria matrix for %s.", requirement.id)
+        try:
+            partial = self.llm.generate(retry, payload_json, PartialReview)
+        except StructuredResponseError:
+            partial = None
+        return complete_review(partial)
 
     @staticmethod
     def _index(requirements: Iterable[Requirement]) -> list[dict[str, str]]:
@@ -292,10 +342,10 @@ class IndividualReviewer:
             "targets": [r.model_dump() for r in targets],
             "index": self._index(r for r in requirements if r.id not in ids),
         }
-        instruction = INDIVIDUAL_RULES + """
+        instruction = INDIVIDUAL_RULES + f"""
 Review each supplied target independently. In reviews, return one review per target,
-copying its id to target_id. Include all seven criteria for every target.
-Keep justifications for passing criteria brief."""
+copying its id to target_id. Include all {len(REQUIREMENT_CRITERIA)} criteria for every target:
+{", ".join(REQUIREMENT_CRITERIA)}. Keep justifications for passing criteria brief."""
         try:
             batch = self.llm.generate(instruction, json.dumps(payload, ensure_ascii=False), IndividualReviews)
             reviews = {item.target_id: IndividualReview(assessments=item.assessments) for item in batch.reviews}

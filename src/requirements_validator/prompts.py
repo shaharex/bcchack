@@ -142,7 +142,18 @@ completeness check triggers, actors, outcomes and boundaries needed by this obli
 For atomicity examine the original group even if extraction split it. For consistency
 check incompatible conditions. Judge feasibility only against stated capabilities or
 limits. Flag an implementation constraint only when the text establishes needless
-restriction. Use not_assessable where the evidence cannot decide. Explain each result
+restriction (ISO/IEC/IEEE 29148 Appropriate). For necessity (29148 Necessary) fail only
+when the document itself shows the obligation serves no stated goal, actor need or
+other requirement, or merely repeats another unit without adding a constraint; pass
+when it traces to a stated goal, rule or interface. For correctness (29148 Correct,
+IEEE 830 4.3.1) check the unit's own facts against the document: arithmetic in examples,
+units, ranges, referenced sections, documents, fields and statuses that must exist.
+A conflict between two separate rules belongs to consistency. For conformance (29148
+Conforming) check the document's own template and conventions: the unit sits in a
+section of the right kind, follows the document's numbering and naming scheme, and its
+template fields are filled rather than left as placeholders. Correctness and necessity
+are judged only against the document; when only a stakeholder could confirm intent,
+use not_assessable. Use not_assessable where the evidence cannot decide. Explain each result
 concisely with reference to the target wording. Every finding must cite the target R-ID.
 Use an empty findings array for pass and not_assessable. Use a nonempty array for fail.
 Copy the assessment's criterion into each of its findings. For a specification fact or
@@ -244,6 +255,44 @@ left to implementation. Choose missing_dependency, ambiguity or contradiction on
 when the two observations establish that specific issue. Use unrelated when there is
 no meaningful pair. For a defect provide the consequence and correction.""" + SUBJECT_RULES
 
+DOCUMENT_RULES = SOURCE_RULES + """
+Assess the specification as a whole against the characteristics of a requirements
+set (ISO/IEC/IEEE 29148:2018 5.2.6) and of a good SRS (IEEE Std 830-1998 4.3).
+Return exactly one assessment for each listed criterion:
+- completeness: the set covers every stated goal, actor, UI element and interface;
+  responses to valid and invalid input classes and failures are defined; no section is
+  left as a placeholder or TBD; every referenced document, figure or section exists.
+- consistency: no requirements conflict and one term names one object throughout.
+  Specific rule-against-rule conflicts are reviewed separately. Report here only
+  document-wide inconsistencies such as differing names for one component, actor or value.
+- feasibility: the set can be realized within the constraints the document states.
+  Fail only when stated constraints make the set unachievable.
+- comprehensibility: a reader can tell what is required and how parts relate:
+  terms and abbreviations are defined, sections are organized by purpose.
+- validatability: it is possible to show that the set satisfies the stated goals and
+  needs; goals are measurable and linked to requirements or acceptance criteria.
+- correctness: every requirement is one the system shall meet; judge only against
+  facts stated in the document and its referenced child documents.
+- ambiguity: document level only, terms with several meanings and a missing glossary.
+- verifiability: document level only, the share of requirements that have an
+  acceptance criterion or measurable result, and unfilled test sections.
+- ranking: each requirement carries an importance and/or stability identifier.
+- modifiability: coherent structure, no redundant statements of one requirement in
+  several places, each requirement stated separately rather than intermixed.
+- traceability: each requirement has a unique identifier and a clear origin, and
+  acceptance criteria and child documents reference the requirements they cover.
+measured_facts were computed deterministically from the source and list block IDs.
+Use them as pointers, read those blocks, and quote the source verbatim as evidence.
+For an absent property cite representative passages that lack it, such as a numbered
+requirement without a priority, and explain the absence. Rule-level ambiguity,
+contradictions, missing data providers and lifecycle triggers are reviewed by other
+passes; do not repeat them. Use fail only with a finding, pass when the document
+satisfies the property, and not_assessable when the source cannot decide.
+Give one defect per finding with a short Russian subject, the consequence for
+implementation, testing or maintenance, and a targeted correction. Use internal
+R-IDs for quotes inside an extracted unit's span and null otherwise. Copy the
+assessment's criterion into each of its findings."""
+
 QUOTE_REPAIR_RULES = SOURCE_RULES + """
 For each indexed invalid citation, find a verbatim replacement in the supplied
 source block that supports the same claim and serves the same role. Copy it from the
@@ -274,6 +323,88 @@ in Russian in reason, mark whether a stakeholder decision is needed, and classif
 impact as blocks_behavior (important outcome cannot be selected/tested),
 needs_decision (material ambiguity with bounded impact), or localized (documentation).
 If the defect is established but its impact cannot yet be ranked, use uncertain.
+Necessity, correctness, conformance, comprehensibility, validatability, ranking,
+modifiability and traceability are required properties under ISO/IEC/IEEE 29148 and
+IEEE 830, not optional advice. Support such a candidate when the cited source shows
+the deficiency, for example missing priorities or identifiers, placeholders in template
+sections or one requirement stated in several places. Classify it localized unless it
+prevents selecting or testing an important outcome.
 Set impact_class=null when unsupported. Set duplicate_of only for the same underlying
 defect requiring the same decision, even when individual and whole-document reviewers
 cited different subsets of its evidence. Distinct decisions on one clause stay separate."""
+
+EXECUTABLE_MODEL_RULES = SOURCE_RULES + """
+Translate the behavioral rules of the specification into an executable model.
+Model only rules whose observable result can be computed from events and stored
+state: counters, limits, periods, notifications, statuses and numeric validations.
+Skip UI layout, architecture, metadata and pure documentation. Account for every
+sentence of the numbered functional requirements and business rules: translate it into
+at least one rule, or list it in skipped with its exact quotation and the reason.
+- events: each input event the rules react to, with every field a rule reads. In a
+  field's source cite the exact passage that documents where that value comes from,
+  such as a data, event or API contract. If a rule needs a value that no passage
+  provides, still declare the field and set source=null. Never invent a source. Give a
+  separate field to every distinct time the document distinguishes for one event, such
+  as when an operation was made and when it was processed or posted, and model a
+  reversal or refund as its own event with the fields its rule needs.
+- state: stored variables. Use keyed=true for values held per key, for example per
+  account and month. default is an expression such as 0 or False.
+- updates: how an event changes state (set, add or subtract), with an optional when
+  condition and key expression.
+- obligations: an observable output the document requires when a condition holds
+  after the event's updates, such as a notification or an error result. Put into when
+  only the conditions written in the same sentence.
+- invariants: limits that must always hold for outputs or state, for example
+  max_count("notice", "account", "month") <= 1. A limit written as its own sentence or
+  requirement is an invariant, never a guard inside another rule. A rule that makes an
+  output happen again "regardless" of history is its own obligation. Express limits on
+  outputs only with count() or max_count() over the outputs actually emitted, never with
+  a counter variable of your own, and never reset history to make two rules agree.
+Translate each sentence separately and literally, even when two requirements seem to
+disagree. Never reconcile, merge or fix conflicting rules; the conflict is what the
+check must find. Every rule cites in source the exact passage it translates.
+Expressions use Python syntax limited to literals, arithmetic, comparisons (chains
+allowed), and, or, not, x if c else y, state variable names, var[key], prev.var (the
+value before the current event), event.field and these functions: month(ts, tz),
+date(ts, tz), minutes_between(a, b), key(a, b, ...), count(output, field=value, ...),
+max_count(output, "field", ...), min, max, abs. Read state as var or var[key]; there is
+no state() function. Timestamps are ISO 8601 strings; a
+timestamp without an offset is local time in the tz argument. Use the IANA zone of
+the place the document names. Identifiers are ASCII snake_case.
+Example for "A reader may hold at most 3 books; a return frees a slot; when the
+third book is issued, send a reminder": state held keyed default 0; update on issue
+held[event.reader] add 1; update on return held[event.reader] subtract 1; obligation
+on issue when prev.held[event.reader] < 3 <= held[event.reader] output reminder;
+invariant held[event.reader] <= 3. Put a short Russian rationale first."""
+
+EXECUTABLE_CASES_RULES = SOURCE_RULES + """
+Write test cases for the supplied executable model. Cases are inputs; Python computes
+every result. Use only events, fields and state variables defined in the model.
+1. kind=acceptance: one case per acceptance criterion, worked example or table row the
+   model's events can express. Copy that whole row or example verbatim into source. Put its
+   preconditions into initial, its action into events, and each stated expected result
+   into expectations as a boolean expression over the final state and outputs, such as
+   count("notice") == 1. Reproduce the document's numbers, dates and times exactly and
+   write local times as ISO strings without an offset. Build keys with the same key(...)
+   calls the updates use, for example key("a1", "2026-03"). Describe each expectation
+   with the document's own words. Never adapt an input to make the expected result come
+   true: when a row gives several times, such as when an operation was made and when it was
+   processed, put each into the field that represents it. Read state in checks as var[key]
+   with key(...) written as an expression, never inside a string. Count only output names
+   the model's obligations emit. Convert amounts into the unit the event field declares.
+2. kind=probe with source=null and no expectations: sequences that test how rules
+   interact. Include an output followed by a configuration change and another trigger in
+   the same period; events on both sides of a period boundary; a reversal or refund of an
+   earlier event; a repeated identical event; and values at range boundaries.
+Supply every field the rules read, including fields whose source is null, so that one
+missing value does not hide other interactions. Only for a field whose source is null,
+add one separate probe that omits that field so the engine can show the input is
+missing. Never omit a documented field. Values are expressions: quote text as "c1"."""
+
+EXECUTABLE_REPAIR = """
+previous_model failed the checks listed in diagnostics. Return the complete corrected
+model. Fix every diagnostic, keep correct rules unchanged and keep exact quotations."""
+
+EXECUTABLE_CASES_REPAIR = """
+previous_cases failed when executed, as listed in diagnostics. Return the complete
+corrected list of cases. Fix every diagnostic and keep the document's values exactly."""

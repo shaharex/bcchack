@@ -6,6 +6,7 @@ from markdown_it import MarkdownIt
 
 from requirements_validator import __main__ as cli
 from requirements_validator.models import (
+    REQUIREMENT_CRITERIA,
     AnalysisRunResult,
     Citation,
     ClarificationQuestion,
@@ -90,7 +91,7 @@ def example_result():
             rationale="The outcomes conflict." if criterion is QualityCriterion.CONSISTENCY else "Satisfied.",
             finding_ids=(finding.id,) if criterion is QualityCriterion.CONSISTENCY else (),
         )
-        for criterion in QualityCriterion
+        for criterion in REQUIREMENT_CRITERIA
     )
     rejected = RejectedFinding(
         status="potential",
@@ -129,14 +130,15 @@ def test_report_renders_decision_details_without_filler_or_duplication():
     headers = re.findall(r"^## (.+)$", rendered, re.M)
     assert headers == [
         "Паспорт прогона", "Резюме для принятия решения", "Карта требований", "Проверка каждого требования",
-        "Проверка спецификации в целом", "Сводка", "Итог",
+        "Проверка спецификации в целом", "Соответствие стандартам", "Исполняемая проверка", "Сводка", "Итог",
     ]
     assert "| B1 | API → Responses | Проанализирован |" not in rendered
     diagnostic = MarkdownReportGenerator(diagnostics=True).render(result)
     assert "| B1 | API → Responses | Проанализирован |" in diagnostic
     assert r"символы \[28, 33\)" in diagnostic
     pass_line, = [line for line in rendered.splitlines() if line.startswith("- Дефектов не выявлено")]
-    assert pass_line.count("**") == 12  # Six bold criterion names on one line.
+    # Every passing criterion name is bold on one line.
+    assert pass_line.count("**") == 2 * (len(REQUIREMENT_CRITERIA) - 1)
     assert "- Return BETA. (Responses · стр. 2)" in rendered
     assert "- Return ALPHA. (Responses · стр. 2)" in rendered
     assert rendered.count("\nALPHA\n") == 1
@@ -151,7 +153,8 @@ def test_report_renders_decision_details_without_filler_or_duplication():
     assert "Продуктовых требований — 0" in rendered and "Других единиц анализа — 1" in rendered
     assert set(re.findall(r"\]\(#([^)]+)\)", rendered)) == set(re.findall(r'<a id="([^"]+)"', rendered))
     parsed = MarkdownIt("commonmark", {"html": True}).enable("table").parse(rendered)
-    assert sum(token.type == "table_open" for token in parsed) == 1
+    # The requirement map and the standards compliance matrix.
+    assert sum(token.type == "table_open" for token in parsed) == 2
     assert sum(token.type == "fence" for token in parsed) == 4
 
 

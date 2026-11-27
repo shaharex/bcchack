@@ -103,6 +103,32 @@ class QualityCriterion(StrEnum):
     CONSISTENCY = "consistency"
     FEASIBILITY = "feasibility"
     IMPLEMENTATION_CONSTRAINT = "implementation_constraint"
+    # ISO/IEC/IEEE 29148:2018 §5.2.5 properties of an individual requirement.
+    NECESSITY = "necessity"
+    CORRECTNESS = "correctness"
+    CONFORMANCE = "conformance"
+    # Properties of the whole set (29148 §5.2.6) and of an SRS (IEEE 830 §4.3).
+    COMPREHENSIBILITY = "comprehensibility"
+    VALIDATABILITY = "validatability"
+    RANKING = "ranking"
+    MODIFIABILITY = "modifiability"
+    TRACEABILITY = "traceability"
+
+
+# Every requirement is assessed on each of these, in this order.
+REQUIREMENT_CRITERIA = (
+    QualityCriterion.AMBIGUITY, QualityCriterion.VERIFIABILITY, QualityCriterion.COMPLETENESS,
+    QualityCriterion.ATOMICITY, QualityCriterion.CONSISTENCY, QualityCriterion.FEASIBILITY,
+    QualityCriterion.IMPLEMENTATION_CONSTRAINT, QualityCriterion.NECESSITY, QualityCriterion.CORRECTNESS,
+    QualityCriterion.CONFORMANCE,
+)
+# The specification as a whole is assessed once on each of these.
+DOCUMENT_CRITERIA = (
+    QualityCriterion.COMPLETENESS, QualityCriterion.CONSISTENCY, QualityCriterion.FEASIBILITY,
+    QualityCriterion.COMPREHENSIBILITY, QualityCriterion.VALIDATABILITY, QualityCriterion.CORRECTNESS,
+    QualityCriterion.AMBIGUITY, QualityCriterion.VERIFIABILITY, QualityCriterion.RANKING,
+    QualityCriterion.MODIFIABILITY, QualityCriterion.TRACEABILITY,
+)
 
 
 class EvidenceReference(Citation):
@@ -185,13 +211,54 @@ class RejectedFinding(Schema):
     resolving_evidence: tuple[Citation, ...] = ()
 
 
+class DocumentEvaluation(Schema):
+    criterion: QualityCriterion
+    outcome: Outcome
+    rationale: Text
+    finding_ids: tuple[Text, ...]
+
+    @model_validator(mode="after")
+    def confirmed_defects(self) -> Self:
+        if bool(self.finding_ids) != (self.outcome == "fail"):
+            raise ValueError("failed evaluations must link to confirmed findings")
+        return self
+
+
+class DocumentMetric(Schema):
+    """A property of the source measured without the model."""
+    criterion: QualityCriterion
+    name: Text
+    value: Text
+    block_ids: tuple[Text, ...] = ()
+
+
+class ExecutionRow(Schema):
+    """One scenario run against the executable model of the specification."""
+    case: Text
+    kind: Literal["acceptance", "probe"]
+    description: Text
+    status: Literal["pass", "conflict", "mismatch", "missing_input", "error"]
+    detail: Text
+
+
 class ReviewResult(Schema):
     evaluations: tuple[CriterionEvaluation, ...]
     findings: tuple[Finding, ...]
     rejected: tuple[RejectedFinding, ...]
+    # None means the whole-document standards assessment was not run.
+    document_evaluations: tuple[DocumentEvaluation, ...] | None = None
 
     def verify_evaluations(self, requirement_ids: set[str], findings: dict[str, Finding]) -> None:
-        expected = {(req_id, criterion) for req_id in requirement_ids for criterion in QualityCriterion}
+        if self.document_evaluations is not None:
+            criteria = [e.criterion for e in self.document_evaluations]
+            if sorted(criteria) != sorted(DOCUMENT_CRITERIA):
+                raise ValueError("document evaluations must cover each document criterion exactly once")
+            for evaluation in self.document_evaluations:
+                for finding_id in evaluation.finding_ids:
+                    finding = findings.get(finding_id)
+                    if finding is None or evaluation.criterion not in (finding.criterion, *finding.related_criteria):
+                        raise ValueError("document evaluation references an unrelated finding")
+        expected = {(req_id, criterion) for req_id in requirement_ids for criterion in REQUIREMENT_CRITERIA}
         linked: set[str] = set()
         for evaluation in self.evaluations:
             row = (evaluation.requirement_id, evaluation.criterion)
@@ -232,6 +299,9 @@ class AnalysisRunResult(Schema):
     severities: tuple[SeverityDecision, ...] | None
     questions: tuple[ClarificationQuestion, ...] | None
     coverage: tuple[CoverageRecord, ...] | None = None
+    metrics: tuple[DocumentMetric, ...] | None = None
+    # None means the executable check was not run.
+    execution: tuple[ExecutionRow, ...] | None = None
 
     @model_validator(mode="after")
     def check_references(self) -> Self:
@@ -263,6 +333,8 @@ class AnalysisRunResult(Schema):
         for candidate in self.review.rejected:
             for citation in candidate.resolving_evidence:
                 index.verify(citation)
+        if any(block_id not in index.blocks for metric in self.metrics or () for block_id in metric.block_ids):
+            raise ValueError("document metric references an unknown block")
 
         self.review.verify_evaluations(set(requirements), findings)
         if self.severities is not None and (

@@ -15,6 +15,7 @@ from .models import (
     SeverityDecision, SourceLocation,
 )
 from .source import SourceIndex
+from .standards import compliance_rows
 
 CRITERIA = {
     Criterion.AMBIGUITY: "Однозначность",
@@ -24,6 +25,22 @@ CRITERIA = {
     Criterion.CONSISTENCY: "Непротиворечивость",
     Criterion.FEASIBILITY: "Выполнимость",
     Criterion.IMPLEMENTATION_CONSTRAINT: "Обоснованность ограничений реализации",
+    Criterion.NECESSITY: "Необходимость",
+    Criterion.CORRECTNESS: "Корректность",
+    Criterion.CONFORMANCE: "Соответствие шаблону",
+    Criterion.COMPREHENSIBILITY: "Понятность",
+    Criterion.VALIDATABILITY: "Возможность валидации",
+    Criterion.RANKING: "Ранжированность по важности и стабильности",
+    Criterion.MODIFIABILITY: "Модифицируемость",
+    Criterion.TRACEABILITY: "Прослеживаемость",
+}
+EXECUTION_STATUSES = {
+    "pass": "Совпадает", "conflict": "Противоречие правил", "mismatch": "Расхождение с примером",
+    "missing_input": "Не хватает данных", "error": "Не выполнен",
+}
+COMPLIANCE_STATUSES = {
+    "pass": "Соответствует", "fail": "Не соответствует", "not_assessable": "Нельзя оценить",
+    "not_run": "Не проверялось",
 }
 OUTCOMES = {
     "pass": "Дефектов не выявлено",
@@ -254,6 +271,7 @@ class MarkdownReportGenerator:
             limitations.append("У отклонённых замечаний есть отдельные основания в общей проверке.")
         coverage = result.coverage
         coverage_counts = Counter(item.kind for item in coverage or ())
+        compliance = compliance_rows(result)
         return self._template.render(
             run=result, rendered_at=rendered_at, criteria=CRITERIA, outcomes=OUTCOMES, levels=LEVELS,
             decisions=decisions, location=location, evaluations=evaluations, counts=counts,
@@ -266,6 +284,8 @@ class MarkdownReportGenerator:
             affected_count=sum(bool(items) for items in linked.values()),
             limitations=limitations, diagnostics=self.diagnostics,
             sections={block.id: " → ".join(block.section) for block in result.document.blocks},
+            compliance=compliance, compliance_statuses=COMPLIANCE_STATUSES, execution_statuses=EXECUTION_STATUSES,
+            compliance_failed=sum(row.status == "fail" for row in compliance),
         )
 
     def write(self, result: AnalysisRunResult, destination: Path, *, rendered_at: datetime | None = None) -> None:

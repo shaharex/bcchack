@@ -6,6 +6,8 @@ import pytest
 
 from requirements_validator import __main__ as cli
 from requirements_validator.aggregation import Verdicts
+from requirements_validator.compliance import DocumentReview
+from requirements_validator.executable_model import ExecutableModel
 from requirements_validator.clarifications import QuestionDrafts, QuestionText, StakeholderClarificationGenerator
 from requirements_validator.extractor import Extraction
 from requirements_validator.gemini import LLMError
@@ -123,6 +125,7 @@ def cli_env(tmp_path, monkeypatch):
 @pytest.mark.parametrize("failure", [None, "provider", "interrupt"])
 def test_cli_full_mocked_pipeline(
     cli_env, monkeypatch, capsys, llm, batch_assessments, extension, failure, skipped_comparisons, skipped_relations,
+    clean_document_review, empty_executable_model,
 ):
     src = cli_env / f"input.{extension}"
     output = cli_env / "report.md"
@@ -163,6 +166,10 @@ def test_cli_full_mocked_pipeline(
             return skipped_relations
         if schema is DependencyReview:
             return DependencyReview(dependency_gaps=())
+        if schema is DocumentReview:
+            return clean_document_review
+        if schema is ExecutableModel:
+            return empty_executable_model
         if schema is SpecificationReview:
             if failure and calls == [Extraction, IndividualReviews, SpecificationReview]:
                 if failure == "interrupt":
@@ -214,7 +221,7 @@ def test_cli_full_mocked_pipeline(
     rendered = output.read_text(encoding="utf-8")
     assert calls == [
         *([] if failure else [Extraction, IndividualReviews]), SpecificationReview, DependencyReview,
-        *map(type, skipped_comparisons), RelationReviews, QuoteRepairs, Verdicts, QuestionDrafts,
+        *map(type, skipped_comparisons), RelationReviews, DocumentReview, ExecutableModel, QuoteRepairs, Verdicts, QuestionDrafts,
     ]
     assert "test-tag" in rendered and "Высокая серьёзность — 1" in rendered
     assert "Неподтверждённых замечаний — 1" in rendered
@@ -260,7 +267,8 @@ def test_cli_error_messages_and_existing_output(cli_env, monkeypatch, capsys, ll
 
 
 def test_cli_settings_are_scoped_to_invocation(
-    cli_env, monkeypatch, llm, skipped_comparisons, skipped_relations,
+    cli_env, monkeypatch, llm, skipped_comparisons, skipped_relations, clean_document_review,
+    empty_executable_model,
 ):
     src = cli_env / "input.md"
     src.write_text("# Чек", encoding="utf-8")
@@ -285,6 +293,10 @@ def test_cli_settings_are_scoped_to_invocation(
             return SpecificationReview(findings=())
         if schema is RelationReviews:
             return skipped_relations
+        if schema is DocumentReview:
+            return clean_document_review
+        if schema is ExecutableModel:
+            return empty_executable_model
         if schema is LifecycleReview:
             return skipped_comparisons[-1]
         return skipped_comparisons[0]
@@ -302,11 +314,12 @@ def test_cli_settings_are_scoped_to_invocation(
 
 
 def test_report_fences_and_evidence_recheck(
-    document, extraction, llm, batch_assessments, skipped_comparisons, skipped_relations,
+    document, extraction, llm, batch_assessments, skipped_comparisons, skipped_relations, clean_document_review,
+    empty_executable_model,
 ):
     llm.generate.side_effect = [
         extraction, batch_assessments(), SpecificationReview(findings=()), DependencyReview(dependency_gaps=()),
-        *skipped_comparisons, skipped_relations,
+        *skipped_comparisons, skipped_relations, clean_document_review, empty_executable_model,
     ]
     run = AnalysisPipeline(llm, agent_version="fixture").analyze(document)
     writer = MarkdownReportGenerator()
@@ -329,11 +342,12 @@ def test_report_fences_and_evidence_recheck(
 
 
 def test_clarification_recovers_unmatched_findings(
-    document, extraction, llm, batch_assessments, skipped_comparisons, skipped_relations,
+    document, extraction, llm, batch_assessments, skipped_comparisons, skipped_relations, clean_document_review,
+    empty_executable_model,
 ):
     llm.generate.side_effect = [
         extraction, batch_assessments(), SpecificationReview(findings=()), DependencyReview(dependency_gaps=()),
-        *skipped_comparisons, skipped_relations,
+        *skipped_comparisons, skipped_relations, clean_document_review, empty_executable_model,
     ]
     run = AnalysisPipeline(llm, agent_version="fixture").analyze(document)
     req = run.requirements[0]

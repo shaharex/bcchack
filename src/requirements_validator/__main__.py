@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sqlite3
+import subprocess
 import sys
 from collections.abc import Sequence
 from contextlib import ExitStack, closing
@@ -35,6 +36,19 @@ GEMINI_ENV = {
     "timeout_ms": "GEMINI_TIMEOUT_MS", "max_attempts": "GEMINI_MAX_ATTEMPTS",
     "max_retry_wait_seconds": "GEMINI_MAX_RETRY_WAIT_SECONDS",
 }
+
+
+def source_version() -> str:
+    """Return the agent's git tag or commit, marked dirty for uncommitted changes."""
+    package = Path(__file__).resolve().parent
+    try:
+        described = subprocess.run(
+            ["git", "describe", "--tags", "--always", "--dirty"], cwd=package,
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        described = ""
+    return described or f"v{version('requirements-validator')}"
 
 
 class TerminalArgumentParser(argparse.ArgumentParser):
@@ -133,7 +147,7 @@ def _run(argv: Sequence[str] | None) -> int:
             criterion: SeverityRule(level, DEFAULT_RULES[criterion].rationale)
             for criterion, level in overrides.items()
         })
-        agent_version = env.get("VALIDATOR_AGENT_VERSION", "").strip() or f"v{version('requirements-validator')}"
+        agent_version = env.get("VALIDATOR_AGENT_VERSION", "").strip() or source_version()
         LOG.info("Analyzing %s with %s (%s)", input_path.name, provider_name, settings.model)
         LOG.info("Dividing file into source blocks", extra={"stage": 1})
         document = FileDocumentParser().parse(input_path)
@@ -141,23 +155,38 @@ def _run(argv: Sequence[str] | None) -> int:
         with ExitStack() as resources:
             live = resources.enter_context(client_type(settings))
             llm = live
+            executable_llm = None
+            executable_model = env.get("EXECUTABLE_GEMINI_MODEL", "").strip()
+            if executable_model and args.provider == "gemini":
+                # The hardest translation step may use a stronger model; the main chain is its fallback.
+                executable_settings = settings.model_copy(update={
+                    "model": executable_model,
+                    "fallback_models": tuple(m for m in (settings.model, *settings.fallback_models) if m != executable_model),
+                })
+                executable_llm = resources.enter_context(GeminiClient(executable_settings))
             if not args.no_resume:
                 if checkpoint_path.exists() and args.input.samefile(checkpoint_path):
                     raise DocumentParseError("Checkpoint path must be distinct from the input.")
                 database = resources.enter_context(closing(sqlite3.connect(checkpoint_path)))
                 checkpoint = CheckpointedLLM(live, database, document_id=document.id, agent_version=agent_version)
                 llm = checkpoint
+                if executable_llm is not None:
+                    executable_llm = CheckpointedLLM(executable_llm, database, document_id=document.id,
+                                                     agent_version=agent_version)
             pipeline = AnalysisPipeline(
                 llm, agent_version=agent_version, severity=rubric, clarification=StakeholderClarificationGenerator(llm),
+                executable_llm=executable_llm,
+                executable=env.get("VALIDATOR_EXECUTABLE", "1").strip().casefold() not in {"0", "false", "no", "off"},
             )
             try:
                 result = pipeline.analyze(document)
             except (StructuredResponseError, EvidenceError):
                 # A terminal validation error would repeat on every resume if the
                 # same problematic answers stayed in the checkpoint.
-                if checkpoint is not None:
-                    checkpoint.finish()
-                    checkpoint = None
+                for saved in (checkpoint, executable_llm):
+                    if isinstance(saved, CheckpointedLLM):
+                        saved.finish()
+                checkpoint = None
                 raise
             LOG.info("Writing %s report", report_format.upper(), extra={"stage": 5})
             writer.write(result, output)
@@ -169,6 +198,8 @@ def _run(argv: Sequence[str] | None) -> int:
                 if checkpoint.reused:
                     LOG.info("Resumed using %d saved %s replies.", checkpoint.reused, provider_name)
                 checkpoint.finish()
+                if isinstance(executable_llm, CheckpointedLLM):
+                    executable_llm.finish()
                 checkpoint = None
         LOG.info("Wrote %s (%d requirements, %d findings)", output,
                  len(result.requirements), len(result.review.findings))

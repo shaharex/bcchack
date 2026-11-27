@@ -17,6 +17,10 @@ from .ports import LLMError as LLMError, StructuredResponseError, T
 LOG = logging.getLogger(__name__)
 
 
+class TransientLLMError(LLMError):
+    """The provider stayed unavailable or over quota after the allowed retries."""
+
+
 def retry_after(error: errors.APIError) -> float:
     # Gemini's quota response can carry a protobuf Duration even without a header.
     header = error.response.headers.get("Retry-After", "") if error.response is not None else ""
@@ -36,6 +40,15 @@ class GeminiSettings(Schema):
     timeout_ms: int = Field(default=60_000, gt=0)
     max_attempts: int = Field(default=3, ge=1, le=8)
     max_retry_wait_seconds: int = Field(default=60, ge=0)
+    # Tried in order when the current model stays unavailable or over quota.
+    fallback_models: tuple[Text, ...] = ()
+
+    @field_validator("fallback_models", mode="before")
+    @classmethod
+    def split_models(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(name.strip() for name in value.split(",") if name.strip())
+        return value
 
     @field_validator("api_key")
     @classmethod
@@ -49,7 +62,8 @@ class GeminiSettings(Schema):
         env = os.environ if env is None else env
         names = {"api_key": "GEMINI_API_KEY", "model": "GEMINI_MODEL",
                  "timeout_ms": "GEMINI_TIMEOUT_MS", "max_attempts": "GEMINI_MAX_ATTEMPTS",
-                 "max_retry_wait_seconds": "GEMINI_MAX_RETRY_WAIT_SECONDS"}
+                 "max_retry_wait_seconds": "GEMINI_MAX_RETRY_WAIT_SECONDS",
+                 "fallback_models": "GEMINI_FALLBACK_MODELS"}
         return cls.model_validate({key: env[name] for key, name in names.items() if name in env})
 
 
@@ -62,10 +76,13 @@ class GeminiClient:
             vertexai=False, api_key=settings.api_key.get_secret_value()
         )
         self._sleep = sleep
+        self._models = tuple(dict.fromkeys((settings.model, *settings.fallback_models)))
+        self._active = 0
 
     @property
     def model(self) -> str:
-        return self.settings.model
+        used = self._models[:self._active + 1]
+        return used[0] if len(used) == 1 else f"{used[0]} (резерв: {', '.join(used[1:])})"
 
     def close(self) -> None:
         if self._owns_client:
@@ -79,6 +96,18 @@ class GeminiClient:
         self.close()
 
     def generate(self, instruction: str, payload: str, schema: type[T]) -> T:
+        while True:
+            model = self._models[self._active]
+            try:
+                return self._generate(model, instruction, payload, schema)
+            except TransientLLMError as exc:
+                if self._active + 1 >= len(self._models):
+                    raise
+                # Stay on the fallback for the rest of the run to avoid repeating the wait.
+                self._active += 1
+                LOG.warning("%s Switching to fallback model %s.", exc, self._models[self._active])
+
+    def _generate(self, model: str, instruction: str, payload: str, schema: type[T]) -> T:
         config = types.GenerateContentConfig(
             system_instruction=instruction,
             response_mime_type="application/json",
@@ -91,7 +120,7 @@ class GeminiClient:
         for attempt in range(1, self.settings.max_attempts + 1):
             try:
                 response = self._client.models.generate_content(
-                    model=self.model, contents=payload, config=config
+                    model=model, contents=payload, config=config
                 )
             except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError,
                     errors.APIError) as exc:
@@ -109,12 +138,13 @@ class GeminiClient:
                 advice = ""
                 if code == 429:
                     failure += ", rate limit or quota exceeded"
-                    advice = (f" Check the Google AI Studio limits for project and model {self.model}, "
+                    advice = (f" Check the Google AI Studio limits for project and model {model}, "
                               "then retry when quota is available or use a project with sufficient quota.")
                 if requested:
                     advice = f" Gemini requested a retry after {requested:g}s." + advice
-                raise LLMError(f"Gemini request failed for {schema.__name__} ({failure}, attempts={attempt})."
-                               + advice) from exc
+                error = TransientLLMError if transient else LLMError
+                raise error(f"Gemini request failed for {schema.__name__} with {model} "
+                            f"({failure}, attempts={attempt})." + advice) from exc
             except ValueError as exc:
                 # SDK request conversion and response-envelope decoding both
                 # precede validation of the model's generated JSON below.
