@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from requirements_validator.models import (
+    REQUIREMENT_CRITERIA,
     AnalysisRunResult,
     Citation,
     ClarificationQuestion,
@@ -85,7 +86,7 @@ def test_report_renders_decision_details_without_filler_or_duplication():
             rationale="The outcomes conflict." if criterion is QualityCriterion.CONSISTENCY else "Satisfied.",
             finding_ids=(finding.id,) if criterion is QualityCriterion.CONSISTENCY else (),
         )
-        for criterion in QualityCriterion
+        for criterion in REQUIREMENT_CRITERIA
     )
     rejected = RejectedFinding(
         status="potential",
@@ -122,10 +123,11 @@ def test_report_renders_decision_details_without_filler_or_duplication():
     assert rendered.index("## Паспорт прогона") < rendered.index("## Резюме для принятия решения")
     assert "| B1 | API → Responses | Проанализирован |" in rendered
     pass_line, = [line for line in rendered.splitlines() if line.startswith("- Пройдено:")]
-    for criterion in QualityCriterion:
+    for criterion in REQUIREMENT_CRITERIA:
         if criterion is not QualityCriterion.CONSISTENCY:
             assert "**" in pass_line
-    assert pass_line.count("**") == 12  # Six bold criterion names on one line.
+    # Every passing criterion name is bold on one line.
+    assert pass_line.count("**") == 2 * (len(REQUIREMENT_CRITERIA) - 1)
     assert "Ожидаемый исход A (стр. 2, B1, символы [37, 41)) — Return BETA." in rendered
     assert "Ожидаемый исход B (стр. 2, B1, символы [28, 33)) — Return ALPHA." in rendered
     assert "The scenario and outcomes are repeated here." not in rendered

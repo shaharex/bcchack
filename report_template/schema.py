@@ -73,6 +73,15 @@ class SetFinding(ReportModel):
     fix: Text
 
 
+class ComplianceRow(ReportModel):
+    standard: Text
+    clause: Text
+    property: Text
+    status: Literal["Соответствует", "Не соответствует", "Нельзя оценить", "Не проверялось"]
+    basis: Text
+    findings: list[Text]
+
+
 class Conclusion(ReportModel):
     can_start: bool
     reason: Text
@@ -85,6 +94,7 @@ class Report(ReportModel):
     checks: list[Check]
     set_findings: list[SetFinding]
     conclusion: Conclusion
+    compliance: list[ComplianceRow] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_links(self) -> Self:
@@ -125,6 +135,11 @@ class Report(ReportModel):
             for j, report_id in enumerate(finding.affected):
                 if report_id not in requirements:
                     error(("set_findings", i, "affected", j), report_id, f"неизвестное требование {report_id}")
+
+        for i, row in enumerate(self.compliance):
+            for j, finding_id in enumerate(row.findings):
+                if finding_id not in finding_ids:
+                    error(("compliance", i, "findings", j), finding_id, f"неизвестное замечание {finding_id}")
 
         if missing := requirements - checked:
             ids = ", ".join(sorted(missing))

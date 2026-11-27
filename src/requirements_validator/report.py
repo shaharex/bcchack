@@ -12,6 +12,7 @@ from .models import (
     QualityCriterion as Criterion,
 )
 from .source import SourceIndex, verify_evidence_owner
+from .standards import compliance_rows
 
 CRITERIA = {
     Criterion.AMBIGUITY: "Однозначность",
@@ -21,6 +22,22 @@ CRITERIA = {
     Criterion.CONSISTENCY: "Непротиворечивость",
     Criterion.FEASIBILITY: "Выполнимость",
     Criterion.IMPLEMENTATION_CONSTRAINT: "Обоснованность ограничений реализации",
+    Criterion.NECESSITY: "Необходимость",
+    Criterion.CORRECTNESS: "Корректность",
+    Criterion.CONFORMANCE: "Соответствие шаблону",
+    Criterion.COMPREHENSIBILITY: "Понятность",
+    Criterion.VALIDATABILITY: "Возможность валидации",
+    Criterion.RANKING: "Ранжированность по важности и стабильности",
+    Criterion.MODIFIABILITY: "Модифицируемость",
+    Criterion.TRACEABILITY: "Прослеживаемость",
+}
+EXECUTION_STATUSES = {
+    "pass": "Совпадает", "conflict": "Противоречие правил", "mismatch": "Расхождение с примером",
+    "missing_input": "Не хватает данных", "error": "Не выполнен",
+}
+COMPLIANCE_STATUSES = {
+    "pass": "Соответствует", "fail": "Не соответствует", "not_assessable": "Нельзя оценить",
+    "not_run": "Не проверялось",
 }
 OUTCOMES = {"pass": "Пройдено", "fail": "Нарушение", "not_assessable": "Нельзя оценить"}
 LEVELS = {"critical": "Критическая", "high": "Высокая", "medium": "Средняя", "low": "Низкая"}
@@ -145,6 +162,7 @@ class MarkdownReportGenerator:
         }
 
         rejected_counts = Counter(getattr(item, "status", "unsupported") for item in result.review.rejected)
+        compliance = compliance_rows(result)
         return self._template.render(
             run=result, criteria=CRITERIA, outcomes=OUTCOMES, levels=LEVELS, decisions=decisions,
             location=location, evaluations=evaluations, counts=counts, critical=critical,
@@ -153,6 +171,8 @@ class MarkdownReportGenerator:
             kinds=KINDS, coverage_kinds=COVERAGE_KINDS, rejected_statuses=REJECTED_STATUSES,
             outcome_counts=outcome_counts, question_rows=question_rows, coverage=coverage,
             coverage_rows=coverage_rows, rejected_counts=rejected_counts, show_impact=show_impact,
+            compliance=compliance, compliance_statuses=COMPLIANCE_STATUSES, execution_statuses=EXECUTION_STATUSES,
+            compliance_failed=sum(row.status == "fail" for row in compliance),
         )
 
     def write(self, result: AnalysisRunResult, destination: Path) -> None:

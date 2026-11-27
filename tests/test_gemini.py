@@ -105,3 +105,42 @@ def test_short_retries_share_the_wait_budget():
                max_attempts=3, max_wait=6)
     assert len(requests) == 2
     assert sleeps == [4]
+
+
+def test_unavailable_model_switches_to_fallback_for_the_rest_of_the_run():
+    requests, sleeps = [], []
+    responses = [failure(503), failure(503), success(), success()]
+
+    def handler(request):
+        requests.append(request)
+        return responses.pop(0)
+
+    settings = GeminiSettings.from_env({"GEMINI_API_KEY": "unit-test", "GEMINI_MODEL": "primary",
+                                        "GEMINI_MAX_ATTEMPTS": "2",
+                                        "GEMINI_FALLBACK_MODELS": " backup , primary,"})
+    assert settings.fallback_models == ("backup", "primary")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with genai.Client(api_key="unit-test", http_options=types.HttpOptions(httpx_client=http)) as sdk:
+            client = GeminiClient(settings, client=sdk, sleep=sleeps.append)
+            assert client.model == "primary"
+            client.generate("review", "document", SpecificationReview)
+            client.generate("review", "document", SpecificationReview)
+    assert ["primary" in str(r.url) for r in requests] == [True, True, False, False]
+    assert all("backup" in str(r.url) for r in requests[2:])
+    assert client.model == "primary (резерв: backup)"
+
+
+def test_permanent_error_does_not_switch_models():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return failure(403)
+
+    settings = GeminiSettings.from_env({"GEMINI_API_KEY": "unit-test", "GEMINI_MODEL": "primary",
+                                        "GEMINI_FALLBACK_MODELS": "backup"})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        with genai.Client(api_key="unit-test", http_options=types.HttpOptions(httpx_client=http)) as sdk:
+            with pytest.raises(LLMError, match="HTTP 403"):
+                GeminiClient(settings, client=sdk, sleep=lambda _: None).generate("r", "d", SpecificationReview)
+    assert len(requests) == 1

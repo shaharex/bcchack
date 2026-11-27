@@ -4,12 +4,15 @@ from collections import defaultdict
 from pathlib import Path
 
 from report_template.render import SEVERITIES, ExportFormat, write_report
-from report_template.schema import Check, Conclusion, Finding, Passport, Report, Requirement, SetFinding, Severity
+from report_template.schema import (
+    Check, ComplianceRow, Conclusion, Finding, Passport, Report, Requirement, SetFinding, Severity,
+)
 
 from .models import AnalysisRunResult
-from .report import CRITERIA, report_readiness
+from .report import COMPLIANCE_STATUSES, CRITERIA, report_readiness
 from .severity import RubricSeverityClassifier
 from .source import SourceIndex
+from .standards import compliance_rows
 
 SEVERITY_LABELS: dict[str, Severity] = {
     "critical": "Критично", "high": "Критично", "medium": "Существенно", "low": "Незначительно",
@@ -38,6 +41,7 @@ def to_report(result: AnalysisRunResult, source: Path) -> Report:
     individual: dict[str, list[Finding]] = defaultdict(list)
     whole: list[SetFinding] = []
     priorities: list[tuple[int, str]] = []
+    exported_ids: dict[str, str] = {}
     for finding in result.review.findings:
         severity = severities[finding.id]
         criterion = CRITERIA[finding.criterion]
@@ -62,6 +66,7 @@ def to_report(result: AnalysisRunResult, source: Path) -> Report:
                 id=report_id, severity=severity, criterion=criterion, location=location, quote=evidence.quote,
                 explanation=finding.explanation, fix=finding.recommendation,
             ))
+        exported_ids[finding.id] = report_id
         priorities.append((SEVERITIES.index(severity), f"{report_id} · {finding.recommendation}"))
     priorities.sort(key=lambda entry: entry[0])
     can_start, reason = report_readiness(result, has_blocking_findings="Критично" in severities.values())
@@ -74,6 +79,14 @@ def to_report(result: AnalysisRunResult, source: Path) -> Report:
         checks=[Check(requirement_id=item.report_id, findings=individual[item.report_id]) for item in requirements],
         set_findings=whole,
         conclusion=Conclusion(can_start=can_start, reason=reason, priorities=[text for _, text in priorities]),
+        compliance=[
+            ComplianceRow(
+                standard=row.property.standard, clause=row.property.clause,
+                property=f"{row.property.label} ({row.property.name})", status=COMPLIANCE_STATUSES[row.status],
+                basis=row.basis, findings=[exported_ids[finding_id] for finding_id in row.finding_ids],
+            )
+            for row in compliance_rows(result)
+        ],
     )
 
 

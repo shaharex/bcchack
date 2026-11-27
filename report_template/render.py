@@ -22,6 +22,9 @@ ROOT = Path(__file__).resolve().parent
 SEVERITIES: tuple[Severity, ...] = ("Критично", "Существенно", "Незначительно")
 CLEAR = "Замечаний нет"
 BADGE_CLASSES = dict(zip((*SEVERITIES, CLEAR), ("critical", "major", "minor", "clear"), strict=True))
+COMPLIANCE_CLASSES = {
+    "Соответствует": "clear", "Не соответствует": "critical", "Нельзя оценить": "minor", "Не проверялось": "neutral",
+}
 JSON_FENCE = re.compile(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n[ \t]*```", re.IGNORECASE | re.DOTALL)
 
 
@@ -109,6 +112,7 @@ def render_html(report: Report, *, styled: bool = True) -> str:
         checks.append((requirement, findings, severity))
     return _environment().get_template("template.html.j2").render(
         report=report, stats=stats, critical=stats.critical, checks=checks, badge_classes=BADGE_CLASSES,
+        compliance_classes=COMPLIANCE_CLASSES,
         metrics=[("Требований", stats.requirements), ("Нарушений", stats.findings), *stats.by_severity.items()],
         stylesheet=_stylesheet() if styled else "",
     )

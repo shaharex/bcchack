@@ -3,7 +3,7 @@ import json
 import pytest
 
 from requirements_validator.aggregation import DuplicatePairs, FindingsAggregator, Verdict, Verdicts
-from requirements_validator.models import QualityCriterion as Criterion
+from requirements_validator.models import REQUIREMENT_CRITERIA, QualityCriterion as Criterion
 from requirements_validator.ports import LLMError, StructuredResponseError
 from requirements_validator.reviewers import (
     CrossRequirementReviewer, DependencyGap, DependencyReview, IndividualReview, IndividualReviewer, IndividualReviews,
@@ -33,7 +33,33 @@ def test_individual_review_retries_an_incomplete_criterion_matrix(document, requ
     assert IndividualReviewer(llm).review(document, requirements[0]) == expected
     first, retry = [call.args for call in llm.generate.call_args_list]
     assert retry[1:] == first[1:]
-    assert ", ".join(Criterion) in retry[0]
+    assert ", ".join(REQUIREMENT_CRITERIA) in retry[0]
+
+
+def test_single_review_accepts_a_partial_matrix_instead_of_aborting(document, requirements, llm, assessments):
+    from requirements_validator.reviewers import UNASSESSED, LooseAssessment, PartialReview
+
+    llm.generate.reset_mock()
+    invalid = StructuredResponseError("Invalid structured response for IndividualReview")
+    returned = assessments().assessments[:3]
+    partial = PartialReview(assessments=(
+        *(LooseAssessment(**item.model_dump()) for item in returned),
+        LooseAssessment(**returned[0].model_dump()),  # A repeated criterion keeps its first assessment.
+        LooseAssessment(criterion=Criterion.NECESSITY, outcome="fail", rationale="Нет находки.", findings=()),
+    ))
+    llm.generate.side_effect = [invalid, invalid, partial]
+    review = IndividualReviewer(llm).review(document, requirements[0])
+    rows = {item.criterion: item for item in review.assessments}
+    assert [item.criterion for item in review.assessments] == list(REQUIREMENT_CRITERIA)
+    assert all(rows[item.criterion] == item for item in returned)
+    # A failure without a finding, and every omitted criterion, become not assessable.
+    assert rows[Criterion.NECESSITY].outcome == "not_assessable"
+    assert rows[Criterion.CONFORMANCE].rationale == UNASSESSED
+
+    llm.generate.reset_mock()
+    llm.generate.side_effect = [invalid, invalid, invalid]
+    review = IndividualReviewer(llm).review(document, requirements[0])
+    assert {item.outcome for item in review.assessments} == {"not_assessable"}
 
 
 def test_invalid_review_batch_splits_to_recover_missing_targets(document, requirements, llm, assessments, batch_assessments):
@@ -64,7 +90,7 @@ def test_merge_across_passes_and_link_evaluations(document, requirements, llm, a
     result = FindingsAggregator(llm).aggregate(document, requirements, reviews, cross)
     finding, = result.findings
     assert finding.scopes == ("individual", "specification")
-    assert len(result.evaluations) == 7 * len(requirements)
+    assert len(result.evaluations) == len(REQUIREMENT_CRITERIA) * len(requirements)
     failed, = [e for e in result.evaluations if e.outcome == "fail"]
     assert failed.finding_ids == (finding.id,)
     assert not result.rejected
@@ -228,7 +254,7 @@ def test_missing_verdict_cannot_pass(document, requirements, llm, assessments):
 
 def test_semantic_duplicate_preserves_different_quotes_and_evaluation_link(document, requirements, llm, assessments):
     original = issue(requirements[0])
-    shorter = original.evidence[0].model_copy(update={"quote": "быстро"})
+    shorter = original.evidence[0].model_copy(update={"quote": "срочно"})
     paraphrase = original.model_copy(update={"subject": "Допустимое время", "evidence": (shorter,)})
     reviews = {r.id: assessments() for r in requirements}
     reviews[requirements[0].id] = assessments(original)

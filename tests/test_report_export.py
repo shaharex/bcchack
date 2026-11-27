@@ -10,7 +10,7 @@ import pytest
 from report_template.render import RenderError, load_report, prepare_format, render_html, statistics
 from report_template.render_pdf import main as render_pdf
 from requirements_validator import __main__ as cli
-from requirements_validator.models import AnalysisRunResult, CriterionEvaluation, QualityCriterion, ReviewResult
+from requirements_validator.models import REQUIREMENT_CRITERIA, AnalysisRunResult, CriterionEvaluation, QualityCriterion, ReviewResult
 
 
 SAMPLE = Path(__file__).resolve().parents[1] / "report_template" / "sample_report.json"
@@ -81,7 +81,7 @@ def test_agent_cli_exports_without_extra_analysis(
     evaluations = tuple(
         CriterionEvaluation(requirement_id=item.id, criterion=criterion, outcome="pass",
                             rationale="Проверено.", finding_ids=())
-        for item in requirements for criterion in QualityCriterion
+        for item in requirements for criterion in REQUIREMENT_CRITERIA
     )
     result = AnalysisRunResult(
         document=document, requirements=requirements, started_at=datetime(2026, 11, 27, tzinfo=UTC),
