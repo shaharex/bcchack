@@ -1,0 +1,239 @@
+{
+  "kind": "focused_lifecycle_semantic_eval",
+  "results": [
+    {
+      "model": "gemini-3.5-flash-lite",
+      "cases": [
+        {
+          "case": "official_purchase_lifecycle",
+          "candidate_metrics": {
+            "raw_candidate_count": 0,
+            "grounded_candidate_count": 0,
+            "ungrounded_candidate_count": 0,
+            "overlapping_evidence_candidate_count": 0
+          },
+          "verified_finding_count": 0,
+          "accepted_findings": [],
+          "issues": [
+            {
+              "criterion": "ambiguity",
+              "detected_with_expected_passages": false,
+              "manual_review": false,
+              "matched_finding": null
+            }
+          ],
+          "unexpected_findings": [],
+          "rejected_candidates": [],
+          "focused_response": {
+            "rationale": "В документации отсутствуют явно выраженные различные стадии одной операции для рассматриваемых триггеров или событий, образующие конкурирующие трактовки жизненного цикла. Обычные действия не создают раздельных стадий.",
+            "outcome": "not_applicable",
+            "checks": []
+          }
+        },
+        {
+          "case": "official_resolved_purchase_trigger",
+          "candidate_metrics": {
+            "raw_candidate_count": 0,
+            "grounded_candidate_count": 0,
+            "ungrounded_candidate_count": 0,
+            "overlapping_evidence_candidate_count": 0
+          },
+          "verified_finding_count": 0,
+          "accepted_findings": [],
+          "issues": [],
+          "unexpected_findings": [],
+          "rejected_candidates": [],
+          "focused_response": {
+            "rationale": "В документе описываются две стадии процесса обработки покупки: авторизация и клиринг (блок b001). Триггер 'проведена покупка' явно соотнесен с более поздней стадией — клирингом (блок b002), что разрешает выбор стадии.",
+            "outcome": "resolved",
+            "checks": [
+              {
+                "subject": "проведена покупка",
+                "scenario": "Триггер может относиться к стадии авторизации или стадии клиринга, и встает вопрос, какая из них управляет публикацией события.",
+                "first": {
+                  "expected_outcome": "Если триггер относится к авторизации, то событие публикуется на этапе авторизации до клиринга.",
+                  "evidence": {
+                    "block_id": "b001",
+                    "quote": "Процессинг авторизует покупку и позднее выполняет клиринг.",
+                    "occurrence": null,
+                    "requirement_id": null
+                  }
+                },
+                "second": {
+                  "expected_outcome": "Если триггер относится к клирингу, то событие публикуется после завершения клиринга.",
+                  "evidence": {
+                    "block_id": "b002",
+                    "quote": "Событие «проведена покупка» публикуется только после клиринга.",
+                    "occurrence": null,
+                    "requirement_id": null
+                  }
+                },
+                "context_evidence": [
+                  {
+                    "block_id": "b003",
+                    "quote": "Если расходы достигли порога, сервис передаёт уведомление на отправку в течение минуты после получения события «проведена покупка».",
+                    "occurrence": null,
+                    "requirement_id": null
+                  }
+                ],
+                "recommendation": "Какая стадия управляет публикацией события?",
+                "resolved_by": {
+                  "block_id": "b002",
+                  "quote": "Событие «проведена покупка» публикуется только после клиринга.",
+                  "occurrence": null
+                }
+              }
+            ]
+          }
+        },
+        {
+          "case": "lifecycle_ambiguity",
+          "candidate_metrics": {
+            "raw_candidate_count": 1,
+            "grounded_candidate_count": 1,
+            "ungrounded_candidate_count": 0,
+            "overlapping_evidence_candidate_count": 0
+          },
+          "verified_finding_count": 1,
+          "accepted_findings": [
+            {
+              "criterion": "ambiguity",
+              "subject": "завершения перевода",
+              "explanation": "Относится ли завершение перевода к моменту его авторизации банком или к моменту окончательного расчета после клиринга? При первой трактовке — Уведомление отправляется через 60 секунд после авторизации перевода банком. При второй трактовке — Уведомление отправляется через 60 секунд после окончательного расчета перевода после клиринга.",
+              "recommendation": "Уточнить в требованиях, какой именно момент (авторизация или окончательный расчет) считается завершением перевода для отправки уведомления клиенту.",
+              "passages": [
+                "completion-sla",
+                "stage-delay",
+                "transfer-stages"
+              ],
+              "evidence": [
+                {
+                  "passage": "completion-sla",
+                  "quote": "Клиенту отправляется уведомление не позднее 60 секунд после завершения перевода."
+                },
+                {
+                  "passage": "transfer-stages",
+                  "quote": "Перевод сначала авторизуется банком, а затем окончательно рассчитывается после клиринга."
+                },
+                {
+                  "passage": "stage-delay",
+                  "quote": "Между авторизацией и окончательным расчётом может пройти до двух рабочих дней."
+                }
+              ]
+            }
+          ],
+          "issues": [
+            {
+              "criterion": "ambiguity",
+              "detected_with_expected_passages": true,
+              "manual_review": false,
+              "matched_finding": {
+                "criterion": "ambiguity",
+                "subject": "завершения перевода",
+                "explanation": "Относится ли завершение перевода к моменту его авторизации банком или к моменту окончательного расчета после клиринга? При первой трактовке — Уведомление отправляется через 60 секунд после авторизации перевода банком. При второй трактовке — Уведомление отправляется через 60 секунд после окончательного расчета перевода после клиринга.",
+                "recommendation": "Уточнить в требованиях, какой именно момент (авторизация или окончательный расчет) считается завершением перевода для отправки уведомления клиенту.",
+                "passages": [
+                  "completion-sla",
+                  "stage-delay",
+                  "transfer-stages"
+                ],
+                "evidence": [
+                  {
+                    "passage": "completion-sla",
+                    "quote": "Клиенту отправляется уведомление не позднее 60 секунд после завершения перевода."
+                  },
+                  {
+                    "passage": "transfer-stages",
+                    "quote": "Перевод сначала авторизуется банком, а затем окончательно рассчитывается после клиринга."
+                  },
+                  {
+                    "passage": "stage-delay",
+                    "quote": "Между авторизацией и окончательным расчётом может пройти до двух рабочих дней."
+                  }
+                ]
+              }
+            }
+          ],
+          "unexpected_findings": [],
+          "rejected_candidates": [],
+          "focused_response": {
+            "rationale": "Документ описывает жизненный цикл перевода, который состоит из двух этапов: авторизации банком и окончательного расчета после клиринга. Триггер 'завершения перевода' из блока b001 может относиться либо к первому этапу (авторизации), либо ко второму этапу (окончательному расчету после клиринга). Текст спецификации не содержит явного указания, какой именно из этих двух этапов имеется в виду под завершением перевода для отправки уведомления. Следовательно, результат должен быть 'unresolved', и необходимо составить соответствующую проверку.",
+            "outcome": "unresolved",
+            "checks": [
+              {
+                "subject": "завершения перевода",
+                "scenario": "Относится ли завершение перевода к моменту его авторизации банком или к моменту окончательного расчета после клиринга?",
+                "first": {
+                  "expected_outcome": "Уведомление отправляется через 60 секунд после авторизации перевода банком.",
+                  "evidence": {
+                    "block_id": "b001",
+                    "quote": "Клиенту отправляется уведомление не позднее 60 секунд после завершения перевода.",
+                    "occurrence": null,
+                    "requirement_id": null
+                  }
+                },
+                "second": {
+                  "expected_outcome": "Уведомление отправляется через 60 секунд после окончательного расчета перевода после клиринга.",
+                  "evidence": {
+                    "block_id": "b002",
+                    "quote": "Перевод сначала авторизуется банком, а затем окончательно рассчитывается после клиринга.",
+                    "occurrence": null,
+                    "requirement_id": null
+                  }
+                },
+                "context_evidence": [
+                  {
+                    "block_id": "b003",
+                    "quote": "Между авторизацией и окончательным расчётом может пройти до двух рабочих дней.",
+                    "occurrence": null,
+                    "requirement_id": null
+                  }
+                ],
+                "recommendation": "Уточнить в требованиях, какой именно момент (авторизация или окончательный расчет) считается завершением перевода для отправки уведомления клиенту.",
+                "resolved_by": null
+              }
+            ]
+          }
+        },
+        {
+          "case": "resolved_cross_context_boundary",
+          "candidate_metrics": {
+            "raw_candidate_count": 0,
+            "grounded_candidate_count": 0,
+            "ungrounded_candidate_count": 0,
+            "overlapping_evidence_candidate_count": 0
+          },
+          "verified_finding_count": 0,
+          "accepted_findings": [],
+          "issues": [],
+          "unexpected_findings": [],
+          "rejected_candidates": [],
+          "focused_response": {
+            "rationale": "В предоставленном документе описаны правила валидации сумм перевода и диапазоны для тарифов, но отсутствуют какие-либо операции с выделенными последовательными стадиями жизненного цикла, триггеры изменения состояний, уведомления или дедлайны.",
+            "outcome": "not_applicable",
+            "checks": []
+          }
+        },
+        {
+          "case": "clean_valid_requirement",
+          "candidate_metrics": {
+            "raw_candidate_count": 0,
+            "grounded_candidate_count": 0,
+            "ungrounded_candidate_count": 0,
+            "overlapping_evidence_candidate_count": 0
+          },
+          "verified_finding_count": 0,
+          "accepted_findings": [],
+          "issues": [],
+          "unexpected_findings": [],
+          "rejected_candidates": [],
+          "focused_response": {
+            "rationale": "В предоставленном документе описан единственный сценарий для запроса POST /limits, в котором валидация, сохранение и формирование ответа не разделены на отдельные дискретные вехи жизненного цикла. Обычные действия по валидации, сохранению и формированию ответа не образуют конкурирующих стадий. Поскольку в источнике отсутствуют множественные релевантные стадии для операций, результат анализа — not_applicable.",
+            "outcome": "not_applicable",
+            "checks": []
+          }
+        }
+      ]
+    }
+  ]
+}

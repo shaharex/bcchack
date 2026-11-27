@@ -7,11 +7,11 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from .prompts import (
-    CROSS_RULES, DEPENDENCY_RULES, FOCUSED_CHECKS, FOCUSED_RULES, INDIVIDUAL_RULES, LINK_PLAN,
-    QUOTE_REPAIR_RULES, RELATION_RULES,
+    CROSS_RULES, DEPENDENCY_RULES, FOCUSED_CHECKS, FOCUSED_RULES, INDIVIDUAL_RULES, LIFECYCLE_FALLBACK_RULES,
+    LIFECYCLE_RULES, LINK_PLAN, QUOTE_REPAIR_RULES, RELATION_RULES,
 )
 from .source import EvidenceError, SourceIndex
-from .models import Outcome, ParsedDocument, ProposedEvidence, QualityCriterion, Relationship, Requirement, Scenario, Schema, Text
+from .models import Anchor, Outcome, ParsedDocument, ProposedEvidence, QualityCriterion, Relationship, Requirement, Scenario, Schema, Text
 from .ports import StructuredLLM, StructuredResponseError
 
 
@@ -161,10 +161,9 @@ class RelationReviews(Schema):
     rows: tuple[RelationRow, ...]
 
 
-class ScenarioConflict(Schema):
+class ScenarioComparison(Schema):
     subject: Text
     scenario: Text
-    relationship: Relationship = "contradiction"
     first: ConflictSide
     second: ConflictSide
     context_evidence: tuple[ProposedEvidence, ...] = ()
@@ -179,13 +178,23 @@ class ScenarioConflict(Schema):
             raise ValueError("a conflict must cite two source passages")
         return self
 
+
+class ScenarioConflict(ScenarioComparison):
+    relationship: Relationship = "contradiction"
+
     def as_finding(self) -> ProposedFinding:
+        if self.relationship == "competing_interpretations":
+            first_label, second_label = "При первой трактовке", "При второй трактовке"
+        else:
+            first_label, second_label = "По одному правилу", "По другому правилу"
+        sentences = (self.scenario.strip(), f"{first_label} — {self.first.expected_outcome.strip()}",
+                     f"{second_label} — {self.second.expected_outcome.strip()}")
+        explanation = " ".join(s if s.endswith((".", "!", "?", "…")) else f"{s}." for s in sentences)
         return ProposedFinding(
             criterion=(QualityCriterion.CONSISTENCY if self.relationship == "contradiction"
                        else QualityCriterion.AMBIGUITY),
             subject=self.subject,
-            explanation=(f"{self.scenario} По одному правилу — {self.first.expected_outcome}, "
-                         f"по другому — {self.second.expected_outcome}."),
+            explanation=explanation,
             recommendation=self.recommendation,
             evidence=(self.first.evidence, self.second.evidence, *self.context_evidence),
             scenario=Scenario(relationship=self.relationship, description=self.scenario, expected_a=self.first.expected_outcome,
@@ -202,6 +211,32 @@ class FocusedReview(Schema):
     def consistent(self) -> Self:
         if (self.outcome == "fail") != bool(self.conflicts):
             raise ValueError("only failed comparisons must supply conflicts")
+        return self
+
+
+class LifecycleCheck(ScenarioComparison):
+    resolved_by: Anchor | None
+
+    def as_finding(self) -> ProposedFinding:
+        return ScenarioConflict(
+            **self.model_dump(exclude={"resolved_by"}), relationship="competing_interpretations",
+        ).as_finding()
+
+
+class LifecycleReview(Schema):
+    rationale: Text
+    outcome: Literal["not_applicable", "resolved", "unresolved"]
+    checks: tuple[LifecycleCheck, ...]
+
+    @model_validator(mode="after")
+    def complete(self) -> Self:
+        outcome = "not_applicable"
+        if any(check.resolved_by is None for check in self.checks):
+            outcome = "unresolved"
+        elif self.checks:
+            outcome = "resolved"
+        if self.outcome != outcome:
+            raise ValueError("lifecycle outcome must match the checks and each resolving source citation")
         return self
 
 
@@ -312,7 +347,35 @@ class CrossRequirementReviewer:
                         "Recheck the expected outcomes against the exact citations."
                     )
             findings.extend(conflict.as_finding() for conflict in review.conflicts)
+        findings.extend(self.review_lifecycle(document, requirements).findings)
         return SpecificationReview(findings=tuple(findings))
+
+    def review_lifecycle(self, document: ParsedDocument, requirements: tuple[Requirement, ...]) -> SpecificationReview:
+        payload = json.dumps(self._payload(document, requirements), ensure_ascii=False)
+        index = SourceIndex(document)
+        instruction = LIFECYCLE_RULES
+        for attempt in range(2):
+            try:
+                review = self.llm.generate(instruction, payload, LifecycleReview)
+                for check in review.checks:
+                    if check.resolved_by is not None:
+                        index.resolve(check.resolved_by)
+                return SpecificationReview(findings=tuple(check.as_finding() for check in review.checks
+                                                           if check.resolved_by is None))
+            except (StructuredResponseError, EvidenceError):
+                if attempt:
+                    break
+                instruction += (
+                    "\nIf the rationale describes a trigger with two plausible stages and no decisive quote, "
+                    "use outcome=unresolved and include its check with resolved_by=null. "
+                    "Use outcome=resolved only with a check containing the verbatim resolving quote. "
+                    "Every check needs two distinct citations."
+                )
+        fallback = self.llm.generate(FOCUSED_RULES + LIFECYCLE_FALLBACK_RULES, payload, FocusedReview)
+        return SpecificationReview(findings=tuple(
+            conflict.as_finding() for conflict in fallback.conflicts
+            if conflict.relationship == "competing_interpretations"
+        ))
 
     def review_relations(self, document: ParsedDocument, requirements: tuple[Requirement, ...]) -> SpecificationReview:
         source = self._payload(document, requirements)

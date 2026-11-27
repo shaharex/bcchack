@@ -27,7 +27,12 @@ For a single unit covering the clause set atom.source=null; for multiple atoms
 use distinct verbatim subquotes. Set kind explicitly on every atom. Copy the exact
 original identifier into original_id when present; otherwise null. Keep source order."""
 
-FINDING_RULES = """
+CONTRACT_TYPE_RULE = """
+Check a field's declared type and examples within the same message and outcome.
+Request and response representations may differ unless a rule requires them to match.
+A response example that contradicts its own response schema is evidence of a defect."""
+
+FINDING_RULES = CONTRACT_TYPE_RULE + """
 Give one defect per finding. Use a short Russian subject naming the affected aspect,
 explain the concrete consequence, and propose a targeted correction without inventing
 policy. Cite exact source passages. Link each affected requirement by its internal R-ID
@@ -57,16 +62,6 @@ Compare time attribution rules against acceptance cases, examples, and event pro
 rules. Trace an event whose occurrence and posting fall in different reporting periods
 in the stated timezone. Identify the counter or period that each passage says to update.
 """,
-    "lifecycle_trigger": """
-Trace a single event through each milestone explicitly described in the source.
-Separate the time of the user's action, the time the system recognizes the event,
-and the start of any deadline measured from receipt. Identify the exact term that
-triggers the state change or notification. Does the source define which milestone
-that term refers to? For two plausible readings, show which state changes or which
-clock starts at each stage. Use the concrete timing difference when given, or
-describe what happens between the stages. Cite the named milestones and trigger.
-Check whether a definition settles the mapping. A timing goal and a deadline
-measured from receipt can coexist when the triggering stage is clearly specified.""",
     "validation_response": """
 For the same operation and invalid input, compare the HTTP status and result required
 by status tables, validation steps, and response examples. Check in particular whether an
@@ -82,6 +77,54 @@ For the same operation, compare the declared HTTP method with the method actuall
 used by its request example. In expected_outcome use the actual HTTP verb alone for
 each side. Report a conflict only when the verbs differ.""" + HTTP_METHOD_RULE,
 }
+
+LIFECYCLE_RULES = SOURCE_RULES + """
+First use rationale to list the stages of each relevant operation, identify the
+trigger for a state change, notification or deadline, and say whether any passage
+explicitly maps that trigger to one of those stages. A consumer's rule to act on
+receipt establishes no producer emission condition. A reporting period for an
+update is outside this check.
+
+Use a stage only when the source presents it as a distinct milestone for the same
+operation. Ordinary validation, storage and response actions described for a
+successful API request do not by themselves establish competing lifecycle stages
+or separate meanings of success.
+
+Whenever a trigger concerns an operation with two relevant stages, return a check
+even if a definition resolves the mapping. Compare the same operation in the
+interval after the earlier stage and before the later stage. In first and second,
+describe what happens if the trigger refers to the earlier or later stage, respectively.
+Cite the exact trigger in first.evidence and the source's description of the
+distinct stages in second.evidence. Include the affected timing or behavior rule
+and any stated delay in context_evidence when they are separate passages.
+Use internal R-IDs for owned quotes and null for unowned source passages. The subject
+names the ambiguous trigger. The scenario names the two competing mappings and
+the recommendation asks which stage governs.
+
+Always look for text that settles the mapping, including other sections and acceptance
+cases. If the source ties the trigger to one stage, set resolved_by to that exact
+definition or emission rule. A deadline relative to receipt, a trigger name by
+itself, or a common industry convention does not establish this mapping. For
+example, if handoff and a later carrier scan are distinct, "shipment processed"
+can refer to either, whereas "publish shipment processed after the carrier scan"
+explicitly chooses the later stage. Set resolved_by to null if neither mapping
+is settled and both are plausible from the source. Set outcome to unresolved if
+any trigger has competing readings and include each unresolved comparison in checks.
+Set outcome to resolved if relevant stages exist and each comparison has a
+resolved_by citation. Set outcome to not_applicable if there are no relevant stages.
+Use only distinctions described by the source, even when technical stage names
+are absent."""
+
+LIFECYCLE_FALLBACK_RULES = """
+Find the stage that causes the producer to emit the event. Compare what the system does
+after the early stage but before the later stage under each plausible reading of the same
+trigger. A consumer deadline measured from receipt does not identify the producer stage.
+If no source rule settles the mapping and the observable timing differs, return a
+competing_interpretations conflict. Cite the trigger, stages and timing rule. An explicit
+emission or definition rule that selects one stage resolves the ambiguity. Keep reporting
+period attribution out of this check. Use only distinct lifecycle milestones described
+in the source. Ordinary validation, storage and response actions of one successful
+request are insufficient to establish competing lifecycle stages."""
 
 INDIVIDUAL_RULES = SOURCE_RULES + FINDING_RULES + HTTP_METHOD_RULE + """
 Review the original wording of the target obligation using the supplied specification
@@ -199,7 +242,7 @@ source block that supports the same claim and serves the same role. Copy it from
 block exactly. Omit an item if this block does not support the claim. Do not supply
 new findings, change the claim, or add words describing a missing value to a quote."""
 
-VERIFY_RULES = SOURCE_RULES + """
+VERIFY_RULES = SOURCE_RULES + CONTRACT_TYPE_RULE + """
 Independently adjudicate every numbered candidate against the whole source. Copy the
 candidate index. Before deciding, look in related rules, definitions, examples,
 tables, column headers, parent headings and exceptions for a resolution. Test the
@@ -207,7 +250,12 @@ candidate's actual claim, not whether its proposed implementation is necessary.
 For a contradiction apply both statements to the same actor, state, time and action.
 If two outcomes remain possible because priority or terminology is ambiguous, the
 ambiguity itself can be a supported defect. Do not assume an undefined event maps
-to one stage when verifying a claim that depends on that mapping. Severity uncertainty
+to one stage when verifying a claim that depends on that mapping. A timing
+contradiction that occurs only under one unconfirmed trigger mapping is potential.
+Check that the rules constrain the same action, since dispatch and delivery are
+different events. A lifecycle ambiguity requires both competing milestones to be
+grounded in the source. Reject hypothetical stages inferred solely by decomposing
+the normal validation, storage and response actions of a request. Severity uncertainty
 is not disproof.
 For omissions distinguish missing observable behavior/data provenance from a choice of
 database columns, algorithm or transport. If an equivalent rule exists elsewhere,

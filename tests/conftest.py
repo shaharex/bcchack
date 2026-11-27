@@ -6,7 +6,7 @@ from requirements_validator.extractor import Extraction, RequirementsExtractor
 from requirements_validator.models import ParsedDocument, QualityCriterion, SourceBlock
 from requirements_validator.ports import StructuredLLM
 from requirements_validator.reviewers import (
-    FOCUSED_CHECKS, Assessment, FocusedReview, IndividualReview, IndividualReviews, RelationPlan, RelationReviews,
+    FOCUSED_CHECKS, Assessment, FocusedReview, IndividualReview, IndividualReviews, LifecycleReview, RelationPlan, RelationReviews,
     RelationRow, TargetReview,
 )
 
@@ -75,7 +75,8 @@ def batch_assessments():
 @pytest.fixture
 def skipped_comparisons():
     result = FocusedReview(outcome="not_assessable", rationale="Сценарий отсутствует.", conflicts=())
-    return (result,) * len(FOCUSED_CHECKS)
+    lifecycle = LifecycleReview(rationale=result.rationale, outcome="not_applicable", checks=())
+    return (result,) * len(FOCUSED_CHECKS) + (lifecycle,)
 
 
 @pytest.fixture

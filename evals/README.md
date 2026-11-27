@@ -15,19 +15,21 @@ scoring.
 
 ## Official report regressions
 
-The separate `official-regressions` suite uses six synthetic cases based on the
+The separate `official-regressions` suite uses seven synthetic cases based on the
 [official report review](../HANDOFF.md#official-report-review). Its five positive
 cases cover a second notification after a threshold change, purchase attribution
 across months, missing read and monthly-spend contracts, the purchase lifecycle
-trigger, and the data needed to attribute a refund. The clean control specifies
+trigger, and the data needed to attribute a refund. One clean control specifies
 an integer request amount and a string response amount with a matching JSON example.
+The other defines exactly when the purchase event is emitted and when the dispatch
+deadline starts.
 
 ```powershell
 python -m evals.run --mode check --suite official-regressions
 python -m evals.run --mode live --suite official-regressions --output official-regressions.json
 ```
 
-The live control also runs extraction and individual review. Its `control_passed`
+The amount-type control also runs extraction and individual review. Its `control_passed`
 field requires the response field to have been reviewed and zero confirmed
 findings. `individual_review_passage_reviewed` distinguishes a clean result from an
 extraction miss. The remaining cases exercise cross-specification review.
@@ -57,6 +59,19 @@ For a repeatable controlled subset, repeat `--case` in the desired order:
 ```powershell
 python -m evals.run --mode live --case conflicting_limits --case clean_valid_requirement --output eval-result.json
 ```
+
+To measure the dedicated dependency pass, add `--compare-dependencies` to a live run.
+Discovery and quote repair run once. The normal case result includes every pass.
+`dependency_comparison` records the dedicated proposals and the scored findings after
+removing just those proposals. The second verification can make additional Gemini calls;
+it is skipped when the dedicated pass returned no proposals. Inspect the claims and
+quotes in both results, especially for manual omission cases. A difference can also
+arise from verifier variance or changed batch composition.
+
+For field-type regressions, select both `--case official_amount_response_type`
+and `--case response_type_conflicts_with_example`. The first expects a clean result
+when the response matches its schema. The second expects a finding when a response
+example gives a string for a field declared as an integer.
 
 The live mode uses `GeminiClient`, `CrossRequirementReviewer`, and `FindingsAggregator`,
 so it exercises the same broad review, dependency tracing, focused scenarios

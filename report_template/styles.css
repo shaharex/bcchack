@@ -1,0 +1,139 @@
+@font-face {
+  font-family: "PT Sans Report";
+  src: url("fonts/PTSans-Regular.ttf");
+  font-weight: 400;
+}
+@font-face {
+  font-family: "PT Sans Report";
+  src: url("fonts/PTSans-Bold.ttf");
+  font-weight: 700;
+}
+
+@page {
+  size: A4;
+  margin: 18mm;
+
+  @bottom-left {
+    content: "Отчёт о проверке требований";
+    font: 9pt "PT Sans Report";
+    color: #455264;
+  }
+  @bottom-right {
+    content: "Стр. " counter(page) " из " counter(pages);
+    font: 9pt "PT Sans Report";
+    color: #455264;
+  }
+}
+
+:root {
+  --text: #182435;
+  --muted: #455264;
+  --line: #cfd6df;
+  --neutral: #f2f5f8;
+}
+
+body {
+  color: var(--text);
+  font: 10pt/1.35 "PT Sans Report";
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+h1, h2, h3, h4 {
+  break-after: avoid;
+  margin: 0 0 2mm;
+}
+h1 {
+  font-size: 22pt;
+  line-height: 1.15;
+  margin-bottom: 5mm;
+}
+h2 { font-size: 14pt; margin-top: 5mm; }
+h3 { font-size: 11pt; }
+h4 { font-size: 10pt; margin-bottom: 1mm; }
+p { margin: 0; white-space: pre-wrap; }
+p + p { margin-top: 1mm; }
+ul, ol { margin: 0 0 4mm; padding-left: 6mm; }
+li { margin-bottom: 1mm; }
+
+table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0 0 4mm;
+}
+caption {
+  break-after: avoid;
+  text-align: left;
+}
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th, td {
+  border: 0.5pt solid var(--line);
+  padding: 1.6mm 2.3mm;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: var(--neutral); }
+td p > b, .finding p > b { white-space: nowrap; }
+.summary td:last-child { text-align: right; font-weight: bold; }
+.quote {
+  color: var(--muted);
+  font-size: 9pt;
+  white-space: pre-wrap;
+}
+.quote, .finding p { orphans: 2; widows: 2; }
+blockquote.quote {
+  border-left: 1pt solid var(--line);
+  padding-left: 2mm;
+  margin: 1mm 0 1.5mm 2mm;
+}
+
+.metrics {
+  border-collapse: separate;
+  border-spacing: 1.5mm 0;
+  break-inside: avoid;
+}
+.metrics td {
+  text-align: center;
+  padding: 2mm 1mm 1.5mm;
+}
+.metrics strong { font-size: 20pt; line-height: 1.2; }
+.neutral { background: var(--neutral); }
+.critical { background: #FCEBEB; color: #791F1F; }
+.major { background: #FAEEDA; color: #633806; }
+.minor { background: #F1EFE8; color: #444441; }
+.clear { background: #EAF3DE; color: #27500A; }
+.badge {
+  border-radius: 2mm;
+  display: inline-block;
+  font-size: 9pt;
+  font-weight: bold;
+  padding: 0.5mm 1.8mm;
+  white-space: nowrap;
+}
+.check {
+  border: 0.5pt solid var(--line);
+  border-radius: 2mm;
+  break-inside: avoid;
+  margin-bottom: 3mm;
+  padding: 3mm;
+}
+.check h3 { display: flow-root; }
+.check h3 .badge { float: right; margin-left: 2mm; }
+.check h3:last-child { margin-bottom: 0; }
+.finding { border-top: 0.5pt solid var(--line); padding-top: 2mm; }
+.finding + .finding { margin-top: 2.5mm; }
+.critical-list {
+  background: #FCEBEB;
+  color: #791F1F;
+  padding: 2mm 3mm 1mm 8mm;
+}
+.verdict {
+  break-inside: avoid;
+  padding: 3mm;
+  margin-bottom: 4mm;
+}
+
+@media screen {
+  body { margin: 6mm auto; max-width: 174mm; padding: 0 4mm; }
+}

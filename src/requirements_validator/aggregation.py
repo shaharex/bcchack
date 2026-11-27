@@ -88,11 +88,17 @@ def ground(document_id: str, index: SourceIndex, requirements: Mapping[str, Requ
         owner = anchor.requirement_id
         scope = requirements[owner].source.location if owner in requirements else None
         citation = index.resolve(anchor, within=scope)
-        if owner is None and candidate.scope == "specification":
+        if candidate.scope == "specification" and owner not in requirements:
+            # Models sometimes cite the source's label instead of an internal R-ID.
+            # Resolve it only if the exact quotation also matches the extracted source.
             matches = [r.id for r in requirements.values()
-                       if contains(r.source.location, citation.location) or contains(citation.location, r.source.location)]
+                       if (owner is None or (r.original_id is not None and r.original_id.quote == owner))
+                       and (contains(r.source.location, citation.location)
+                            or contains(citation.location, r.source.location))]
             if len(matches) == 1:
                 owner = matches[0]
+            elif matches:
+                owner = None
         # A full clause can legitimately include an inline ID and more than one atom.
         # Retain the complete quotation as context and link the exact owned subspan.
         full_reference = None

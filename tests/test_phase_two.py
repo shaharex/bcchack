@@ -13,7 +13,7 @@ from requirements_validator.models import EvidenceReference, Finding, QualityCri
 from requirements_validator.parsers import DocumentParseError, FileDocumentParser
 from requirements_validator.pipeline import AnalysisPipeline
 from requirements_validator.report import MarkdownReportGenerator, quotation
-from requirements_validator.reviewers import DependencyReview, FocusedReview, IndividualReviews, QuoteRepairs, RelationReviews, SpecificationReview
+from requirements_validator.reviewers import DependencyReview, FocusedReview, IndividualReviews, LifecycleReview, QuoteRepairs, RelationReviews, SpecificationReview
 from requirements_validator.severity import RubricSeverityClassifier, SeverityRule
 from requirements_validator.source import Anchor, EvidenceError, SourceIndex
 
@@ -157,6 +157,8 @@ def test_cli_full_mocked_pipeline(
             return batch_assessments(extracted_ids)
         if schema is FocusedReview:
             return skipped_comparisons[0]
+        if schema is LifecycleReview:
+            return skipped_comparisons[-1]
         if schema is RelationReviews:
             return skipped_relations
         if schema is DependencyReview:
@@ -202,7 +204,7 @@ def test_cli_full_mocked_pipeline(
     rendered = output.read_text(encoding="utf-8")
     assert calls == [
         *([] if interrupted else [Extraction, IndividualReviews]), SpecificationReview, DependencyReview,
-        *[FocusedReview] * len(skipped_comparisons), RelationReviews, QuoteRepairs, Verdicts, QuestionDrafts,
+        *map(type, skipped_comparisons), RelationReviews, QuoteRepairs, Verdicts, QuestionDrafts,
     ]
     assert "test-tag" in rendered and "Высокая серьёзность — 1" in rendered
     assert "Неподтверждённых замечаний — 1" in rendered
@@ -267,6 +269,8 @@ def test_cli_settings_are_scoped_to_invocation(
             return SpecificationReview(findings=())
         if schema is RelationReviews:
             return skipped_relations
+        if schema is LifecycleReview:
+            return skipped_comparisons[-1]
         return skipped_comparisons[0]
 
     llm.generate.side_effect = respond

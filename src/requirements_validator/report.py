@@ -55,6 +55,18 @@ def quotation(text: str) -> str:
     return f"{fence}\n{text}{newline}{fence}"
 
 
+def report_readiness(result: AnalysisRunResult, *, has_blocking_findings: bool) -> tuple[bool, str]:
+    if has_blocking_findings:
+        return False, "Рекомендуется отложить реализацию и тестирование затронутых сценариев до устранения блокирующих дефектов."
+    if not result.requirements:
+        return False, "Готовность не установлена. Проверьте полноту извлечения и наличие требований."
+    if result.review.findings:
+        return True, "Уточните замечания перед реализацией и тестированием затронутых требований."
+    if result.review.rejected or any(e.outcome == "not_assessable" for e in result.review.evaluations):
+        return False, "Подтверждённых дефектов нет, но вывод о готовности ограничен: остались непроверяемые критерии или неподтверждённые замечания."
+    return True, "В пределах проанализированного материала подтверждённых препятствий для начала реализации и тестирования не выявлено."
+
+
 class MarkdownReportGenerator:
     def __init__(self) -> None:
         env = Environment(loader=PackageLoader("requirements_validator"), undefined=StrictUndefined,
@@ -86,16 +98,7 @@ class MarkdownReportGenerator:
         counts = Counter(decisions[f.id].level for f in findings if f.id in decisions)
         outcome_counts = Counter(e.outcome for e in result.review.evaluations)
         critical = [f for f in findings if f.id in decisions and decisions[f.id].level in {"critical", "high"}]
-        if critical:
-            readiness = "Рекомендуется отложить реализацию и тестирование затронутых сценариев до устранения блокирующих дефектов."
-        elif not result.requirements:
-            readiness = "Готовность не установлена. Проверьте полноту извлечения и наличие требований."
-        elif findings:
-            readiness = "Уточните замечания перед реализацией и тестированием затронутых требований."
-        elif result.review.rejected or outcome_counts["not_assessable"]:
-            readiness = "Подтверждённых дефектов нет, но вывод о готовности ограничен: остались непроверяемые критерии или неподтверждённые замечания."
-        else:
-            readiness = "В пределах проанализированного материала подтверждённых препятствий для начала реализации и тестирования не выявлено."
+        _, readiness = report_readiness(result, has_blocking_findings=bool(critical))
         priority = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         ordered = sorted(findings, key=lambda f: (priority[decisions[f.id].level] if f.id in decisions else 4, f.id))
 

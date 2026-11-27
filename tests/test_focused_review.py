@@ -6,13 +6,14 @@ from pydantic import ValidationError
 
 from requirements_validator.aggregation import FindingsAggregator, Verdict, Verdicts
 from requirements_validator.extractor import Extraction
-from requirements_validator.models import QualityCriterion
+from requirements_validator.models import QualityCriterion, SourceBlock
 from requirements_validator.parsers import MarkdownParser
 from requirements_validator.pipeline import AnalysisPipeline
 from requirements_validator.ports import StructuredResponseError
 from requirements_validator.report import MarkdownReportGenerator
 from requirements_validator.reviewers import (
-    CrossRequirementReviewer, DependencyReview, FocusedReview, RelationPlan, RelationReviews, ScenarioConflict, SpecificationReview,
+    CrossRequirementReviewer, DependencyReview, FocusedReview, LifecycleReview, RelationPlan, RelationReviews,
+    ScenarioConflict, SpecificationReview,
 )
 
 
@@ -28,6 +29,10 @@ def test_competing_readings_retain_the_assumption_and_are_classified_as_ambiguit
     }).as_finding()
     assert event.criterion is QualityCriterion.AMBIGUITY
     assert event.scenario.relationship == "competing_interpretations"
+    assert event.explanation == (
+        "Authorization precedes settlement. При первой трактовке — Start the clock at authorization. "
+        "При второй трактовке — Start the clock at settlement."
+    )
 
 
 @pytest.fixture
@@ -42,6 +47,60 @@ def side(document, quote, expected_outcome):
         "expected_outcome": expected_outcome,
         "evidence": {"block_id": block.id, "quote": quote, "requirement_id": None},
     }
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_lifecycle_review_checks_explicit_resolution_and_keeps_trigger_evidence(card_spec, llm, resolved):
+    resolution = SourceBlock(id="resolution", text="Событие «проведена покупка» публикуется при клиринге.")
+    document = card_spec.model_copy(update={"blocks": (*card_spec.blocks, resolution)}) if resolved else card_spec
+    trigger = "Процессинг → сервис расходов: проведена покупка."
+    stages = "Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03 по Алматы"
+    deadline = "Сервис передаёт push на отправку в течение минуты после получения события."
+    response = {
+        "rationale": "Между покупкой и проведением проходит время.",
+        "outcome": "resolved" if resolved else "unresolved",
+        "checks": [{
+            "subject": "Момент отправки события",
+            "scenario": "Покупка совершена, проведение ещё не произошло.",
+            "first": side(document, trigger, "Счётчик уже обновлён и срок отправки начался."),
+            "second": side(document, stages, "Обновление счётчика и срок отправки ещё не начались."),
+            "context_evidence": [side(document, deadline, "Передать push.")["evidence"]],
+            "recommendation": "Указать, на каком этапе процессинг публикует событие.",
+            "resolved_by": {"block_id": resolution.id, "quote": resolution.text} if resolved else None,
+        }],
+    }
+    reply = LifecycleReview.model_validate(response)
+    llm.generate.return_value = reply
+    if resolved:
+        with pytest.raises(ValidationError, match="lifecycle outcome must match"):
+            LifecycleReview(rationale=reply.rationale, outcome="resolved", checks=())
+        invalid = reply.checks[0].model_copy(update={
+            "resolved_by": reply.checks[0].resolved_by.model_copy(update={"quote": "Событие при авторизации."}),
+        })
+        llm.generate.side_effect = [reply.model_copy(update={"checks": (invalid,)}), reply]
+
+    result = CrossRequirementReviewer(llm).review_lifecycle(document, ())
+    if resolved:
+        assert not result.findings
+        assert llm.generate.call_count == 2
+    else:
+        finding, = result.findings
+        assert finding.criterion is QualityCriterion.AMBIGUITY
+        assert finding.scenario.relationship == "competing_interpretations"
+        assert tuple(e.quote for e in finding.evidence) == (trigger, stages, deadline)
+
+
+def test_lifecycle_review_falls_back_after_two_invalid_responses(card_spec, llm):
+    invalid = StructuredResponseError("Missing lifecycle comparisons.")
+    fallback = FocusedReview(outcome="pass", rationale="Найдено явное определение.", conflicts=())
+    llm.generate.side_effect = [invalid, invalid, fallback]
+
+    result = CrossRequirementReviewer(llm).review_lifecycle(card_spec, ())
+
+    assert not result.findings
+    assert [call.args[2] for call in llm.generate.call_args_list] == [
+        LifecycleReview, LifecycleReview, FocusedReview,
+    ]
 
 
 @pytest.mark.parametrize(("prompt_family", "subject", "scenario", "first", "second"), [
@@ -87,6 +146,8 @@ def test_focused_scenario_reaches_report(card_spec, llm, prompt_family, subject,
             return SpecificationReview(findings=())
         if schema is RelationPlan:
             return RelationPlan(links=())
+        if schema is LifecycleReview:
+            return LifecycleReview(rationale="Другой сценарий.", outcome="not_applicable", checks=())
         if schema is FocusedReview:
             assert json.loads(payload)["document"] == card_spec.model_dump(mode="json")
             if not all(selector in instruction for selector in prompt_family):
@@ -138,6 +199,8 @@ def test_matching_get_and_curl_cannot_produce_focused_method_conflict(card_spec,
             return SpecificationReview(findings=())
         if schema is RelationPlan:
             return RelationPlan(links=())
+        if schema is LifecycleReview:
+            return LifecycleReview(rationale="Другой сценарий.", outcome="not_applicable", checks=())
         assert schema is FocusedReview  # No candidate should reach verification.
         if "actual HTTP verb alone" not in instruction:
             return FocusedReview(outcome="not_assessable", rationale="Другой сценарий.", conflicts=())

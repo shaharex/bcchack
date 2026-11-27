@@ -187,7 +187,28 @@ OFFICIAL_REGRESSION_CASES = (
         expected=(),
         individual_review_passage="response-field",
     ),
+    EvalCase(
+        id="official_resolved_purchase_trigger",
+        description="An explicit event emission rule fixes the trigger and the start of the dispatch deadline.",
+        passages=(
+            Passage("transaction-stages", "Процессинг авторизует покупку и позднее выполняет клиринг.", "Процессинг"),
+            Passage("purchase-trigger", "Событие «проведена покупка» публикуется только после клиринга. При получении события сервис включает покупку в расходы.", "Учёт расходов"),
+            Passage("dispatch-window", "Если расходы достигли порога, сервис передаёт уведомление на отправку в течение минуты после получения события «проведена покупка».", "Уведомления"),
+        ),
+        expected=(),
+    ),
 )
 
-ALL_CASES = CASES + OFFICIAL_REGRESSION_CASES
+RESPONSE_SCHEMA_CONFLICT = EvalCase(
+    id="response_type_conflicts_with_example",
+    description="The successful response example contradicts the type declared for that response.",
+    passages=(
+        Passage("response-field", "В успешном ответе поле edition передаётся целым числом.", "Ответ"),
+        Passage("response-example", 'Пример успешного ответа: {"edition":"7"}.', "Пример ответа"),
+    ),
+    expected=(ExpectedIssue(QualityCriterion.CONSISTENCY, (frozenset({"response-field", "response-example"}),)),),
+    individual_review_passage="response-field",
+)
+
+ALL_CASES = CASES + OFFICIAL_REGRESSION_CASES + (RESPONSE_SCHEMA_CONFLICT,)
 

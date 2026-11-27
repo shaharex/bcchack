@@ -237,7 +237,7 @@ def _sanitized_provider_error(exc: LLMError) -> dict[str, str]:
     return {"type": type(exc).__name__, "message": message[:500]}
 
 
-def run_live(cases: tuple[EvalCase, ...]) -> tuple[dict[str, object], bool]:
+def run_live(cases: tuple[EvalCase, ...], *, compare_dependencies: bool = False) -> tuple[dict[str, object], bool]:
     settings = _live_settings()
     results = []
     with GeminiClient(settings) as llm:
@@ -263,16 +263,21 @@ def run_live(cases: tuple[EvalCase, ...]) -> tuple[dict[str, object], bool]:
                 focused = reviewer.review_focused(document, requirements)
                 relations = reviewer.review_relations(document, requirements)
                 generated = broad.findings + dependencies.findings + focused.findings + relations.findings
-                cross = SpecificationReview(findings=reviewer.repair_quotes(document, requirements, generated))
-                proposals = cross.findings + tuple(
+                repaired = reviewer.repair_quotes(document, requirements, generated)
+                individual_proposals = tuple(
                     finding for individual_review in individual.values()
                     for assessment in individual_review.assessments for finding in assessment.findings
                 )
-                metrics = _candidate_metrics(materialized, proposals)
-                review = aggregator.aggregate(document, requirements, individual, cross)
-                metrics["merged_candidate_count"] = len(proposals) - len(review.rejected) - len(review.findings)
-                observed, rejected = _observe(materialized, review)
-                result = score(case, observed, rejected, metrics)
+
+                def evaluate(findings: tuple[ProposedFinding, ...]) -> dict[str, object]:
+                    proposals = findings + individual_proposals
+                    metrics = _candidate_metrics(materialized, proposals)
+                    review = aggregator.aggregate(document, requirements, individual, SpecificationReview(findings=findings))
+                    metrics["merged_candidate_count"] = len(proposals) - len(review.rejected) - len(review.findings)
+                    observed, rejected = _observe(materialized, review)
+                    return score(case, observed, rejected, metrics)
+
+                result = evaluate(repaired)
                 if case.individual_review_passage is not None:
                     target_reviewed = any(
                         materialized.fixture_id_by_block[requirement.source.location.block_id]
@@ -280,7 +285,20 @@ def run_live(cases: tuple[EvalCase, ...]) -> tuple[dict[str, object], bool]:
                     )
                     result["individual_review_passage"] = case.individual_review_passage
                     result["individual_review_passage_reviewed"] = target_reviewed
-                    result["control_passed"] = target_reviewed and not result["unexpected_findings"]
+                    if not case.expected:
+                        result["control_passed"] = target_reviewed and not result["unexpected_findings"]
+                if compare_dependencies:
+                    # Quote repair preserves order and cardinality. Remove only this pass's occurrences,
+                    # including when another reviewer independently produced an identical proposal.
+                    start = len(broad.findings)
+                    end = start + len(dependencies.findings)
+                    reduced = evaluate(repaired[:start] + repaired[end:]) if end > start else result
+                    result["dependency_comparison"] = {
+                        "dedicated_candidates": [p.model_dump(mode="json") for p in repaired[start:end]],
+                        "without_dedicated_pass": {k: reduced[k] for k in (
+                            "issues", "accepted_findings", "unexpected_findings", "rejected_candidates",
+                        )},
+                    }
                 results.append(result)
             except LLMError as exc:
                 interrupted = {"case": case.id, "provider_error": _sanitized_provider_error(exc)}
@@ -321,6 +339,8 @@ def run_live(cases: tuple[EvalCase, ...]) -> tuple[dict[str, object], bool]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Requirements-validator semantic regression eval")
     parser.add_argument("--mode", choices=("check", "live"), default="check")
+    parser.add_argument("--compare-dependencies", action="store_true",
+                        help="In live mode, also verify the same candidates without the dedicated dependency pass.")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
         "--suite", choices=("baseline", "official-regressions"), default="baseline",
@@ -332,6 +352,8 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path, help="Write JSON result to this path")
     args = parser.parse_args()
+    if args.compare_dependencies and args.mode != "live":
+        parser.error("--compare-dependencies requires --mode live")
     if args.case_ids and len(args.case_ids) != len(set(args.case_ids)):
         parser.error("each --case may be supplied only once")
     by_id = {case.id: case for case in ALL_CASES}
@@ -352,7 +374,7 @@ def main() -> int:
             "note": "No model was called; this is not a semantic quality result.",
         }
     else:
-        report, complete = run_live(selected)
+        report, complete = run_live(selected, compare_dependencies=args.compare_dependencies)
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     if args.output:
         args.output.write_text(rendered + "\n", encoding="utf-8")

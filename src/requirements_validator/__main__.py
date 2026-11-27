@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 from pydantic import TypeAdapter, ValidationError
+from report_template.render import EXPORT_FORMATS, prepare_format
 
 from .checkpoint import CheckpointedLLM
 from .clarifications import StakeholderClarificationGenerator
@@ -19,6 +20,7 @@ from .parsers import DocumentParseError, FileDocumentParser
 from .pipeline import AnalysisPipeline
 from .ports import StructuredResponseError
 from .report import MarkdownReportGenerator
+from .report_export import TemplateReportGenerator
 from .severity import DEFAULT_RULES, Level, RubricSeverityClassifier, SeverityRule
 from .source import EvidenceError
 
@@ -32,11 +34,19 @@ GEMINI_ENV = {
 
 def main(argv: Sequence[str] | None = None) -> int:
     cli = argparse.ArgumentParser(prog="python -m requirements_validator",
-                                  description="Validate requirements and write a Russian Markdown report.")
+                                  description="Validate requirements and write a Russian report.")
     cli.add_argument("--input", type=Path, required=True, help="UTF-8 Markdown or text-based PDF")
-    cli.add_argument("--output", type=Path, required=True, help="Destination Markdown report")
+    cli.add_argument("-o", "--output", type=Path, help="Destination report (default: report.<format>)")
+    formats = ("md", *EXPORT_FORMATS)
+    cli.add_argument("-f", "--format", choices=formats,
+                     help="Report format (default: md, or the format from --output)")
     cli.add_argument("--no-resume", action="store_true", help="Run without reading or writing local checkpoints")
     args = cli.parse_args(argv)
+    extension = args.output.suffix.lower().removeprefix(".") if args.output else ""
+    if args.format and extension in formats and extension != args.format:
+        cli.error(f"--format {args.format} does not match the .{extension} output extension.")
+    report_format = args.format or (extension if extension in formats else "md")
+    output = args.output or Path(f"report.{report_format}")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -44,10 +54,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if not args.input.is_file():
             raise DocumentParseError(f"Input file does not exist or is not a file: {args.input}")
-        if args.output.exists() and (args.output.is_dir() or args.input.samefile(args.output)):
+        if output.exists() and (output.is_dir() or args.input.samefile(output)):
             raise DocumentParseError("Output must be a file distinct from the input.")
-        if not args.output.parent.is_dir():
-            raise DocumentParseError(f"Output directory does not exist: {args.output.parent}")
+        if not output.parent.is_dir():
+            raise DocumentParseError(f"Output directory does not exist: {output.parent}")
+        if report_format == "md":
+            writer = MarkdownReportGenerator()
+        else:
+            prepare_format(report_format)
+            writer = TemplateReportGenerator(args.input, report_format)
         file_env = dotenv_values(Path.cwd() / ".env", encoding="utf-8-sig", interpolate=False)
         env = {key: value for key, value in file_env.items() if value is not None}
         env.update(os.environ)
@@ -66,8 +81,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         })
         agent_version = env.get("VALIDATOR_AGENT_VERSION", "").strip() or f"v{version('requirements-validator')}"
         document = FileDocumentParser().parse(args.input)
-        writer = MarkdownReportGenerator()
-        checkpoint_path = args.output.with_name(f".{args.output.name}.gemini-checkpoint.sqlite3")
+        checkpoint_path = output.with_name(f".{output.name}.gemini-checkpoint.sqlite3")
         LOG.info("Analyzing %s with %s", args.input.name, settings.model)
         with ExitStack() as resources:
             live = resources.enter_context(GeminiClient(settings))
@@ -90,12 +104,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     checkpoint.finish()
                     checkpoint = None
                 raise
-            writer.write(result, args.output)
+            writer.write(result, output)
             if checkpoint is not None:
                 if checkpoint.reused:
                     LOG.info("Resumed using %d saved Gemini replies.", checkpoint.reused)
                 checkpoint.finish()
-        LOG.info("Wrote %s (%d requirements, %d findings)", args.output,
+        LOG.info("Wrote %s (%d requirements, %d findings)", output,
                  len(result.requirements), len(result.review.findings))
     except ValidationError as exc:
         fields = ", ".join(GEMINI_ENV.get(str(item["loc"][0]), "analysis data") if item["loc"] else "analysis data"

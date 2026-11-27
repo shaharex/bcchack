@@ -123,6 +123,32 @@ def test_cross_review_uses_entire_document_and_retains_both_sides(document, requ
     assert agg.aggregate(document, requirements, reviews, reverse).findings == result.findings
 
 
+@pytest.mark.parametrize("label_matches", [True, False])
+def test_cross_review_resolves_source_label_only_when_it_matches_the_quote(
+    document, requirements, llm, assessments, label_matches,
+):
+    target, _, other = requirements
+    proposal = issue(target)
+    label = target.original_id.quote if label_matches else other.original_id.quote
+    reference = proposal.evidence[0].model_copy(update={"requirement_id": label})
+    proposal = proposal.model_copy(update={"evidence": (reference,)})
+    llm.generate.return_value = Verdicts(verdicts=(verdict(0),))
+    reviews = {r.id: assessments() for r in requirements}
+
+    result = FindingsAggregator(llm).aggregate(
+        document, requirements, reviews, SpecificationReview(findings=(proposal,)),
+    )
+    if label_matches:
+        finding, = result.findings
+        assert finding.requirement_ids == (target.id,)
+        assert finding.evidence[0].quote == target.source.quote
+        assert not result.rejected
+    else:
+        assert not result.findings
+        rejected, = result.rejected
+        assert rejected.proposed_evidence == (reference,)
+
+
 @pytest.mark.parametrize("verbatim", [True, False])
 def test_cross_quote_repair_preserves_the_claim_and_requires_exact_source(
     document, requirements, llm, assessments, verbatim,

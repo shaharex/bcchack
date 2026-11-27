@@ -9,7 +9,7 @@ from requirements_validator.aggregation import Verdict, Verdicts
 from requirements_validator.extractor import Extraction
 from requirements_validator.models import AnalysisRunResult, ClarificationQuestion, SeverityDecision
 from requirements_validator.pipeline import AnalysisPipeline
-from requirements_validator.reviewers import DependencyReview, FocusedReview, IndividualReviews, RelationReviews, SpecificationReview
+from requirements_validator.reviewers import DependencyReview, FocusedReview, IndividualReviews, LifecycleReview, RelationReviews, SpecificationReview
 
 
 @pytest.mark.parametrize("bad_port", [None, "severity", "clarification"])
@@ -32,6 +32,8 @@ def test_phase_two_ports_and_result_integrity(
             return DependencyReview(dependency_gaps=())
         if schema is FocusedReview:
             return skipped_comparisons[0]
+        if schema is LifecycleReview:
+            return skipped_comparisons[-1]
         if schema is RelationReviews:
             assert json.loads(payload)["comparisons"][0]["link"] == 0
             return skipped_relations
@@ -72,7 +74,7 @@ def test_phase_two_ports_and_result_integrity(
     assert AnalysisRunResult.model_validate_json(result.model_dump_json()) == result
     assert calls == [
         Extraction, IndividualReviews, SpecificationReview, DependencyReview,
-        *[FocusedReview] * len(skipped_comparisons), RelationReviews, Verdicts,
+        *map(type, skipped_comparisons), RelationReviews, Verdicts,
     ]
 
 

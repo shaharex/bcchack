@@ -7,10 +7,12 @@
 - [x] Add regression cases for the five missed official scenarios and the explicit response-type control. The [evaluation suite](evals/README.md#official-report-regressions) passes its offline check.
 - [x] Run the six new regression cases with pinned Gemini Flash-Lite and save the [results](reports/official_regressions_flash_lite.json). The first two cases completed before a rate limit, and the remaining four completed in a follow-up run.
 - [x] Add dedicated data-source review and an exact-quote repair attempt. The [targeted rerun](reports/official_regressions_flash_lite_targeted.json) found the monthly-spend and refund gaps with source evidence. The amount-type control passed.
-- [ ] Improve detection and classification of the purchase lifecycle trigger. Flash-Lite produced related findings but the expected ambiguity and evidence did not match in the rerun.
+- [ ] Make detection of the purchase lifecycle trigger reliable on Flash-Lite. The structured review compares the stages and looks for a source rule that fixes the mapping. Flash Preview confirmed the issue on the synthetic regression.
 - [x] Verify extraction roles for the API contract and response examples. The [coverage run](reports/api_extraction_coverage_flash_lite.json) classified all five previously excluded blocks as analyzed.
 - [x] Repeat the lifecycle fixtures and clean controls with pinned Flash-Lite. Save the [official follow-up](reports/official_regressions_flash_lite_followup.json), [targeted rerun](reports/official_regressions_flash_lite_targeted.json) and [historical controls](reports/lifecycle_controls_lite.json).
-- [ ] Complete the same-evidence comparison with a more capable Gemini model. Four attempts stopped before scoring because of provider errors. See the run records below.
+- [x] Compare Flash Preview with Flash-Lite on both lifecycle regressions and the control with an explicit trigger. Save the [focused comparison](reports/lifecycle_trigger_verified.json).
+- [ ] Re-run the full comparison on the final review rules when Gemini quota is available. Flash Preview and 3.6 Flash returned HTTP 429.
+- [x] Fix cross-specification citation linking when Gemini uses the source's requirement label. The exact quotation must match an extracted requirement with that label before it can be linked.
 - [x] Remove 189 generated pytest artifacts from Git tracking, ignore future test-output directories and commit the retry/resume changes with their tests and documentation.
 
 ## Official report review
@@ -56,7 +58,15 @@ The [six-case follow-up](reports/official_regressions_flash_lite_followup.json) 
 
 A subsequent [four-case rerun](reports/official_regressions_flash_lite_targeted.json) used the dedicated data-source pass. Manual review confirmed separate findings for the missing settings read and the missing source of monthly spending. The refund gap cited the actual event fields, and the amount-type control passed. Flash-Lite reported a timing conflict between the purchase goal and the dispatch deadline. That finding did not cite the named transaction stages or distinguish which stage triggers notification, so the lifecycle ambiguity remains open.
 
-The stronger-model attempts completed zero cases. Gemini 3.5 Flash and 3.7 Flash returned HTTP 503 after retries. Gemini 3.1 Pro Preview returned HTTP 429 with a retry interval longer than the configured wait budget. Gemini 2.5 Pro returned HTTP 404. No comparative score is available. [3.5 Flash](reports/lifecycle_controls_flash.json) ? [3.7 Flash](reports/lifecycle_controls_flash_37.json) ? [3.1 Pro Preview](reports/lifecycle_controls_pro.json) ? [2.5 Pro](reports/lifecycle_controls_pro_25.json)
+The earlier stronger-model attempts completed zero cases. Gemini 3.5 Flash and 3.7 Flash returned HTTP 503 after retries. Gemini 3.1 Pro Preview returned HTTP 429 with a retry interval longer than the configured wait budget. Gemini 2.5 Pro returned HTTP 404. [3.5 Flash](reports/lifecycle_controls_flash.json), [3.7 Flash](reports/lifecycle_controls_flash_37.json), [3.1 Pro Preview](reports/lifecycle_controls_pro.json), [2.5 Pro](reports/lifecycle_controls_pro_25.json)
+
+### Focused lifecycle comparison, November 27
+
+These runs used the working tree based on `c126f57aca4941a2febdfdea0b69a6e7afc3df0b`. The lifecycle review compares behavior between two source milestones, checks exact quotations and sends unresolved comparisons to the independent verifier.
+
+- Gemini 3 Flash Preview found both expected ambiguities with the required passages and reported zero findings on the explicitly resolved purchase case. Provider errors interrupted the two other controls in that run. Flash-Lite passed all three controls. Its purchase finding omitted the named event, which the regression scorer requires for a match. [Focused comparison](reports/lifecycle_trigger_verified.json)
+- A separate preview run inferred stages from ordinary API processing and flagged a clean case. The final rules require the source to describe distinct milestones and require an exact resolving quotation for a resolved comparison. Flash-Lite matched the transfer case, missed the purchase case and returned zero findings across all three clean controls. A focused Flash-Lite check of the original specification also proposed no purchase lifecycle finding. [Final Flash-Lite results](reports/lifecycle_trigger_flash_lite.json)
+- The follow-up preview calls returned HTTP 429. Gemini 3.6 Flash also hit HTTP 429 before it could score a case in the full comparison. [3.6 Flash interruption](reports/lifecycle_controls_flash_36.json)
 
 ## Baseline and reproducible checks
 

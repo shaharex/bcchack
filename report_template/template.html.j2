@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Отчёт о проверке требований</title>
+  {% if stylesheet %}<style>{{ stylesheet | safe }}</style>{% endif %}
+</head>
+<body>
+  {% macro badge(label) -%}
+    <span class="badge {{ badge_classes[label] }}">{{ label }}</span>
+  {%- endmacro %}
+  <h1>Отчёт о проверке требований</h1>
+  <h2>1. Паспорт прогона</h2>
+  <table class="passport">
+    <colgroup><col style="width: 28%" /><col style="width: 72%" /></colgroup>
+    <tbody>
+      <tr><th scope="row">Документ</th><td>{{ report.passport.document_title }}</td></tr>
+      <tr><th scope="row">Источник</th><td>{{ report.passport.source }}</td></tr>
+      <tr><th scope="row">Дата проверки</th><td>{{ report.passport.run_date }}</td></tr>
+      <tr><th scope="row">Модель</th><td>{{ report.passport.model }}</td></tr>
+      <tr><th scope="row">Версия агента</th><td>{{ report.passport.agent_version }}</td></tr>
+    </tbody>
+  </table>
+
+  <table class="metrics" aria-label="Счётчики отчёта">
+    <tbody><tr>
+    {% for label, value in metrics %}
+      <td class="{{ badge_classes.get(label, 'neutral') }}"><p>{{ label }}</p><p><strong>{{ value }}</strong></p></td>
+    {% endfor %}
+    </tr></tbody>
+  </table>
+
+  <h2>2. Нарезка требований</h2>
+  <table>
+    <colgroup><col style="width: 13%" /><col style="width: 17%" /><col style="width: 21%" /><col style="width: 49%" /></colgroup>
+    <thead><tr><th scope="col">ID в отчёте</th><th scope="col">ID в документе</th><th scope="col">Раздел</th><th scope="col">Краткая формулировка</th></tr></thead>
+    <tbody>
+    {% for requirement in report.requirements %}
+      <tr>
+        <td>{{ requirement.report_id }}</td>
+        <td>{{ requirement.doc_id if requirement.doc_id is not none else 'нет' }}</td>
+        <td>{{ requirement.section }}</td>
+        <td>
+          <p>{{ requirement.summary }}</p>
+          {% if requirement.doc_id is none %}<p class="quote">{{ requirement.quote }}</p>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">Требования не выделены.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>3. Проверка каждого требования</h2>
+  {% for requirement, findings, severity in checks %}
+    <article class="check">
+      <h3>{{ requirement.report_id }} · {{ requirement.section }} {{ badge(severity) }}</h3>
+      {% for finding in findings %}
+        <section class="finding">
+          <h4>{{ finding.id }} {{ badge(finding.severity) }}</h4>
+          <p><b>Критерий</b> {{ finding.criterion }}</p>
+          <p><b>Привязка</b> {{ finding.location }}</p>
+          <blockquote class="quote">{{ finding.quote }}</blockquote>
+          <p><b>Суть</b> {{ finding.explanation }}</p>
+          <p><b>Как исправить</b> {{ finding.fix }}</p>
+        </section>
+      {% endfor %}
+    </article>
+  {% else %}
+    <p>Требования не выделены.</p>
+  {% endfor %}
+
+  <table>
+    <caption><h2>4. Проверка набора требований</h2></caption>
+    <colgroup><col style="width: 9%" /><col style="width: 17%" /><col style="width: 14%" /><col style="width: 23%" /><col style="width: 37%" /></colgroup>
+    <thead><tr><th scope="col">ID</th><th scope="col">Серьёзность</th><th scope="col">Затронуты</th><th scope="col">Критерий</th><th scope="col">Суть и исправление</th></tr></thead>
+    <tbody>
+    {% for finding in report.set_findings %}
+      <tr>
+        <td>{{ finding.id }}</td>
+        <td>{{ badge(finding.severity) }}</td>
+        <td>{{ finding.affected | join(', ') or '—' }}</td>
+        <td>{{ finding.criterion }}</td>
+        <td><p>{{ finding.explanation }}</p><p><b>Как исправить</b> {{ finding.fix }}</p></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">Замечаний нет.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>5. Сводка</h2>
+  <table class="summary">
+    <colgroup><col style="width: 77%" /><col style="width: 23%" /></colgroup>
+    <thead><tr><th scope="col">Показатель</th><th scope="col">Количество</th></tr></thead>
+    <tbody>
+    {% for label, value in metrics %}
+      <tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+    {% endfor %}
+      <tr><td>Требований без замечаний</td><td>{{ stats.clean_requirements }}</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Критичные дефекты</h3>
+  {% if critical %}
+    <ul class="critical-list">
+    {% for id, explanation in critical %}
+      <li><b>{{ id }}</b> · {{ explanation }}</li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p>Критичных дефектов нет.</p>
+  {% endif %}
+
+  <h2>6. Итог</h2>
+  <div class="verdict {{ 'clear' if report.conclusion.can_start else 'critical' }}">
+    <p><b>Начинать разработку и тестирование: {{ 'можно' if report.conclusion.can_start else 'нельзя' }}</b></p>
+    <p>{{ report.conclusion.reason }}</p>
+  </div>
+
+  <h3>Что исправить в первую очередь</h3>
+  {% if report.conclusion.priorities %}
+    <ol>
+    {% for priority in report.conclusion.priorities %}
+      <li>{{ priority }}</li>
+    {% endfor %}
+    </ol>
+  {% else %}
+    <p>Приоритеты не указаны.</p>
+  {% endif %}
+</body>
+</html>

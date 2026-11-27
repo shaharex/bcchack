@@ -18,13 +18,16 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
+export = ["weasyprint==70.0", "python-docx==1.2.0"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["requirements_validator", "report_template"]
+package-dir = {"" = "src", report_template = "report_template"}
 
 [tool.setuptools.package-data]
 requirements_validator = ["templates/*.j2"]
+report_template = ["*.j2", "*.css", "fonts/*.ttf", "fonts/OFL.txt"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
