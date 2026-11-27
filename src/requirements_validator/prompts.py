@@ -25,7 +25,15 @@ For each group identify the full clause using block_id, first_line and last_line
 (1-based inside the block, counting blank lines). Alternatively copy an exact quote.
 For a single unit covering the clause set atom.source=null; for multiple atoms
 use distinct verbatim subquotes. Set kind explicitly on every atom. Copy the exact
-original identifier into original_id when present; otherwise null. Keep source order."""
+original identifier into original_id when present; otherwise null. Keep source order.
+Write each statement as a concise Russian description of the behavior. Preserve
+API names, field names and all original quotations as written."""
+
+SUBJECT_RULES = """
+Use a short Russian subject that states the specific defect. Name the affected
+operation, event or field and what conflicts, is ambiguous or is missing. Prefer
+"Для отмены заказа указаны два срока — 24 и 48 часов" to "Срок отмены заказа".
+Preserve source identifiers and add no claim beyond the cited evidence."""
 
 CONTRACT_TYPE_RULE = """
 Check a field's declared type and examples within the same message and outcome.
@@ -33,16 +41,16 @@ Request and response representations may differ unless a rule requires them to m
 A response example that contradicts its own response schema is evidence of a defect."""
 
 FINDING_RULES = CONTRACT_TYPE_RULE + """
-Give one defect per finding. Use a short Russian subject naming the affected aspect,
-explain the concrete consequence, and propose a targeted correction without inventing
-policy. Cite exact source passages. Link each affected requirement by its internal R-ID
+Give one defect per finding. Explain the concrete consequence and propose a targeted
+correction without inventing policy. Cite exact source passages. Link each affected
+requirement by its internal R-ID
 on evidence inside its atomic source span. Cite additional definitions or context using
 requirement_id=null. Cite all sides of a conflict. For omissions, cite the triggering
 rule and explain why it necessitates the missing behavior. Mere best practices are
 insufficient. Separate an unspecified externally observable outcome from an unspecified
 implementation strategy. Use the full document to look up referenced quantities, terms,
 actors and exceptions. A bound, unit or definition given in another applicable section
-satisfies the contract. Return empty findings when there is no supported defect."""
+satisfies the contract. Return empty findings when there is no supported defect.""" + SUBJECT_RULES
 
 HTTP_METHOD_RULE = """
 Compare the actual HTTP methods for the same operation. curl -G or --get with data
@@ -113,7 +121,7 @@ any trigger has competing readings and include each unresolved comparison in che
 Set outcome to resolved if relevant stages exist and each comparison has a
 resolved_by citation. Set outcome to not_applicable if there are no relevant stages.
 Use only distinctions described by the source, even when technical stage names
-are absent."""
+are absent.""" + SUBJECT_RULES
 
 LIFECYCLE_FALLBACK_RULES = """
 Find the stage that causes the producer to emit the event. Compare what the system does
@@ -177,7 +185,7 @@ For each missing path, name the missing value or capability, cite the consuming
 obligation and the closest documented contract, and state the observable consequence.
 Quote the actual contract, including its listed inputs, verbatim. If the contract
 is complete or the consumer can derive the value, omit the gap. Avoid prescribing
-a particular transport, HTTP method, field name or storage design."""
+a particular transport, HTTP method, field name or storage design.""" + SUBJECT_RULES
 
 FOCUSED_RULES = SOURCE_RULES + """
 Perform only the comparison below. Use the entire specification to check for
@@ -194,7 +202,7 @@ each expected outcome. Use the R-ID when the quote lies inside its atomic span,
 and null for source outside the extraction. Include any additional passages needed to
 establish timing, scope or conditions in context_evidence. Recommend a correction without inventing
 policy. Give a short rationale even when conflicts is empty.
-"""
+""" + SUBJECT_RULES
 
 EQUIVALENCE_RULES = SOURCE_RULES + """
 Compare the supplied pairs of already supported findings. Return the zero-based pair
@@ -234,7 +242,7 @@ Record both observations under first and second, with exact quotations and expec
 in Russian. Choose compatible when they can be satisfied together or the decision is
 left to implementation. Choose missing_dependency, ambiguity or contradiction only
 when the two observations establish that specific issue. Use unrelated when there is
-no meaningful pair. For a defect provide a short subject, consequence and correction."""
+no meaningful pair. For a defect provide the consequence and correction.""" + SUBJECT_RULES
 
 QUOTE_REPAIR_RULES = SOURCE_RULES + """
 For each indexed invalid citation, find a verbatim replacement in the supplied

@@ -101,7 +101,7 @@ class GeminiClient:
                 delay = max(requested, min(2 ** (attempt - 1), 16))
                 if transient and attempt < self.settings.max_attempts and delay <= wait_remaining:
                     if code in {429, 503}:
-                        LOG.info("Gemini returned HTTP %d for %s. Retrying in %.1fs.", code, schema.__name__, delay)
+                        LOG.warning("Gemini returned HTTP %d for %s. Retrying in %.1fs.", code, schema.__name__, delay)
                     self._sleep(delay)
                     wait_remaining -= delay
                     continue

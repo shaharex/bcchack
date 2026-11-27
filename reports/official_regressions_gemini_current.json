@@ -1,0 +1,433 @@
+{
+  "kind": "live_model_semantic_eval",
+  "status": "complete",
+  "model": "gemini-3.5-flash-lite",
+  "requested_cases": [
+    "official_second_notification",
+    "official_purchase_month",
+    "official_settings_read",
+    "official_purchase_lifecycle",
+    "official_refund_attribution",
+    "official_amount_response_type",
+    "official_resolved_purchase_trigger"
+  ],
+  "completed_cases": [
+    "official_second_notification",
+    "official_purchase_month",
+    "official_settings_read",
+    "official_purchase_lifecycle",
+    "official_refund_attribution",
+    "official_amount_response_type",
+    "official_resolved_purchase_trigger"
+  ],
+  "summary": {
+    "automated_expected": 3,
+    "automated_detected": 2,
+    "manual_expected": 2,
+    "manual_candidates_retrieved": 2,
+    "raw_candidates": 10,
+    "overlapping_evidence_candidates": 4,
+    "merged_candidates": 1,
+    "unexpected_findings": 0,
+    "rejected_candidates": 4,
+    "manual_review_pending": true
+  },
+  "cases": [
+    {
+      "case": "official_second_notification",
+      "candidate_metrics": {
+        "raw_candidate_count": 1,
+        "grounded_candidate_count": 1,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Коллизия ограничения частоты уведомлений и правила сброса истории при изменении порога",
+          "explanation": "В текущем календарном месяце по карте уже было отправлено одно уведомление о достижении старого порога, после чего порог был изменен на более высокий, а накопленная сумма оказалась ниже нового порога. Уведомление отправлено не должно быть, так как на карту приходится максимум одно уведомление за календарный месяц. Следующее достижение вызывает уведомление независимо от истории предыдущей настройки. Невозможность однозначно определить, разрешена ли отправка второго уведомления в том же календарном месяце после смены порога.",
+          "recommendation": "Дополнить правило изменения порога оговоркой, что ограничение в одно уведомление за календарный месяц сохраняет приоритет, либо явно разрешить отправку повторного уведомления при смене порога.",
+          "passages": [
+            "monthly-cap",
+            "threshold-change"
+          ],
+          "evidence": [
+            {
+              "passage": "monthly-cap",
+              "quote": "На карту приходится максимум одно уведомление о достижении порога за календарный месяц."
+            },
+            {
+              "passage": "threshold-change",
+              "quote": "Если она ниже нового порога, следующее достижение вызывает уведомление независимо от истории предыдущей настройки."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Коллизия ограничения частоты уведомлений и правила сброса истории при изменении порога",
+            "explanation": "В текущем календарном месяце по карте уже было отправлено одно уведомление о достижении старого порога, после чего порог был изменен на более высокий, а накопленная сумма оказалась ниже нового порога. Уведомление отправлено не должно быть, так как на карту приходится максимум одно уведомление за календарный месяц. Следующее достижение вызывает уведомление независимо от истории предыдущей настройки. Невозможность однозначно определить, разрешена ли отправка второго уведомления в том же календарном месяце после смены порога.",
+            "recommendation": "Дополнить правило изменения порога оговоркой, что ограничение в одно уведомление за календарный месяц сохраняет приоритет, либо явно разрешить отправку повторного уведомления при смене порога.",
+            "passages": [
+              "monthly-cap",
+              "threshold-change"
+            ],
+            "evidence": [
+              {
+                "passage": "monthly-cap",
+                "quote": "На карту приходится максимум одно уведомление о достижении порога за календарный месяц."
+              },
+              {
+                "passage": "threshold-change",
+                "quote": "Если она ниже нового порога, следующее достижение вызывает уведомление независимо от истории предыдущей настройки."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_purchase_month",
+      "candidate_metrics": {
+        "raw_candidate_count": 5,
+        "grounded_candidate_count": 5,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 4,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "consistency",
+          "subject": "Отнесение транзакции к периоду",
+          "explanation": "Покупка совершена 31 января, а проведена 1 февраля. По одному правилу — Месяц расходов определяется по дате совершения покупки. По другому правилу — Февральский счётчик вырос на 4 000 ₸.",
+          "recommendation": "Уточнить в спецификации, является ли датой отнесения расходов дата совершения или дата проведения операции.",
+          "passages": [
+            "month-end-acceptance",
+            "purchase-date-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "purchase-date-rule",
+              "quote": "Месяц расходов определяется по дате совершения покупки по времени Алматы."
+            },
+            {
+              "passage": "purchase-date-rule",
+              "quote": "В расходы входят проведённые покупки."
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03"
+            },
+            {
+              "passage": "month-end-acceptance",
+              "quote": "Февральский счётчик вырос на 4 000 ₸"
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "consistency",
+          "detected_with_expected_passages": true,
+          "manual_review": false,
+          "matched_finding": {
+            "criterion": "consistency",
+            "subject": "Отнесение транзакции к периоду",
+            "explanation": "Покупка совершена 31 января, а проведена 1 февраля. По одному правилу — Месяц расходов определяется по дате совершения покупки. По другому правилу — Февральский счётчик вырос на 4 000 ₸.",
+            "recommendation": "Уточнить в спецификации, является ли датой отнесения расходов дата совершения или дата проведения операции.",
+            "passages": [
+              "month-end-acceptance",
+              "purchase-date-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "purchase-date-rule",
+                "quote": "Месяц расходов определяется по дате совершения покупки по времени Алматы."
+              },
+              {
+                "passage": "purchase-date-rule",
+                "quote": "В расходы входят проведённые покупки."
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "Покупка 31 января в 23:58 на 4 000 ₸ | Провести 1 февраля в 00:03"
+              },
+              {
+                "passage": "month-end-acceptance",
+                "quote": "Февральский счётчик вырос на 4 000 ₸"
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": [
+        {
+          "criterion": "consistency",
+          "subject": "Определение месяца расходов",
+          "reason": "Дублирует первое утверждение о противоречии периода расходов.",
+          "passages": [
+            "month-end-acceptance",
+            "purchase-date-rule"
+          ]
+        },
+        {
+          "criterion": "consistency",
+          "subject": "Определение месяца расходов для покупки",
+          "reason": "Повторяет суть первого найденного противоречия с иной формулировкой ожидаемого результата.",
+          "passages": [
+            "month-end-acceptance",
+            "purchase-date-rule"
+          ]
+        },
+        {
+          "criterion": "consistency",
+          "subject": "Противоречие между датой совершения и датой проведения покупки при определении месяца расходов",
+          "reason": "Аналогично перму кандидату, описывает то же несоответствие между текстом и примером.",
+          "passages": [
+            "month-end-acceptance",
+            "purchase-date-rule"
+          ]
+        },
+        {
+          "criterion": "consistency",
+          "subject": "Месяц расходов для покупки, совершённой в конце месяца и проведённой в начале следующего",
+          "reason": "Содержит те же основания для противоречия, что и кандидат 0.",
+          "passages": [
+            "month-end-acceptance",
+            "purchase-date-rule"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "official_settings_read",
+      "candidate_metrics": {
+        "raw_candidate_count": 2,
+        "grounded_candidate_count": 2,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 2,
+      "accepted_findings": [
+        {
+          "criterion": "completeness",
+          "subject": "Отсутствие метода чтения настроек в REST API",
+          "explanation": "Экран отображает сохраненные настройки, но для их изменения через REST API спецификация определяет метод POST без предоставления операции чтения GET. Приложение читает настройки карты через дочернюю спецификацию REST API. REST API предоставляет только метод POST для записи настроек, без метода чтения. Приложение не может прочитать сохраненные настройки карты с сервера из-за отсутствия GET-метода в спецификации API.",
+          "recommendation": "Добавить спецификацию метода GET для чтения настроек карты в REST API.",
+          "passages": [
+            "integration",
+            "save-contract",
+            "screen-values"
+          ],
+          "evidence": [
+            {
+              "passage": "screen-values",
+              "quote": "При открытии экрана отображаются сохранённый порог, состояние переключателя и сумма расходов за текущий месяц."
+            },
+            {
+              "passage": "integration",
+              "quote": "Приложение читает и сохраняет настройки карты через дочернюю спецификацию REST API."
+            },
+            {
+              "passage": "save-contract",
+              "quote": "POST /alerts/limit: заменить настройку карты и вернуть результат сохранения."
+            }
+          ]
+        },
+        {
+          "criterion": "completeness",
+          "subject": "Сумма расходов за текущий месяц",
+          "explanation": "Экран должен отображать сумму расходов за текущий месяц при своем открытии. Спецификация описывает только эндпоинт POST /alerts/limit для замены настройки карты и возврата результата сохранения. Источник данных для вычисления или получения суммы расходов за текущий месяц не определен в документации.",
+          "recommendation": "Необходимо добавить в спецификацию REST API метод для получения суммы расходов за текущий месяц или расширить контракт существующего метода.",
+          "passages": [
+            "save-contract",
+            "screen-values"
+          ],
+          "evidence": [
+            {
+              "passage": "screen-values",
+              "quote": "При открытии экрана отображаются сохранённый порог, состояние переключателя и сумма расходов за текущий месяц."
+            },
+            {
+              "passage": "save-contract",
+              "quote": "POST /alerts/limit: заменить настройку карты и вернуть результат сохранения."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": true,
+          "manual_review": true,
+          "matched_finding": {
+            "criterion": "completeness",
+            "subject": "Отсутствие метода чтения настроек в REST API",
+            "explanation": "Экран отображает сохраненные настройки, но для их изменения через REST API спецификация определяет метод POST без предоставления операции чтения GET. Приложение читает настройки карты через дочернюю спецификацию REST API. REST API предоставляет только метод POST для записи настроек, без метода чтения. Приложение не может прочитать сохраненные настройки карты с сервера из-за отсутствия GET-метода в спецификации API.",
+            "recommendation": "Добавить спецификацию метода GET для чтения настроек карты в REST API.",
+            "passages": [
+              "integration",
+              "save-contract",
+              "screen-values"
+            ],
+            "evidence": [
+              {
+                "passage": "screen-values",
+                "quote": "При открытии экрана отображаются сохранённый порог, состояние переключателя и сумма расходов за текущий месяц."
+              },
+              {
+                "passage": "integration",
+                "quote": "Приложение читает и сохраняет настройки карты через дочернюю спецификацию REST API."
+              },
+              {
+                "passage": "save-contract",
+                "quote": "POST /alerts/limit: заменить настройку карты и вернуть результат сохранения."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_purchase_lifecycle",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [
+        {
+          "criterion": "ambiguity",
+          "detected_with_expected_passages": false,
+          "manual_review": false,
+          "matched_finding": null
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_refund_attribution",
+      "candidate_metrics": {
+        "raw_candidate_count": 2,
+        "grounded_candidate_count": 2,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 1
+      },
+      "verified_finding_count": 1,
+      "accepted_findings": [
+        {
+          "criterion": "completeness",
+          "subject": "Отсутствие связи возврата с исходной покупкой",
+          "explanation": "Сервис обрабатывает возврат по идентификатору карты и сумме, но не имеет связи между возвратом и исходной операцией покупки. Возврат уменьшает расходы месяца исходной покупки. Процессинг передаёт только идентификатор карты, идентификатор операции возврата, дату и сумму. Невозможно определить месяц исходной покупки для уменьшения расходов",
+          "recommendation": "Добавить в событие возврата идентификатор исходной операции покупки",
+          "passages": [
+            "recorded-purchases",
+            "refund-event",
+            "refund-rule"
+          ],
+          "evidence": [
+            {
+              "passage": "refund-rule",
+              "quote": "Возврат уменьшает расходы месяца исходной покупки независимо от даты возврата."
+            },
+            {
+              "passage": "refund-event",
+              "quote": "Для возврата процессинг передаёт идентификатор карты, идентификатор операции возврата, дату и сумму возврата."
+            },
+            {
+              "passage": "recorded-purchases",
+              "quote": "Для проведённой покупки сервис хранит идентификатор карты, идентификатор операции, месяц покупки и сумму."
+            }
+          ]
+        }
+      ],
+      "issues": [
+        {
+          "criterion": "completeness",
+          "detected_with_expected_passages": true,
+          "manual_review": true,
+          "matched_finding": {
+            "criterion": "completeness",
+            "subject": "Отсутствие связи возврата с исходной покупкой",
+            "explanation": "Сервис обрабатывает возврат по идентификатору карты и сумме, но не имеет связи между возвратом и исходной операцией покупки. Возврат уменьшает расходы месяца исходной покупки. Процессинг передаёт только идентификатор карты, идентификатор операции возврата, дату и сумму. Невозможно определить месяц исходной покупки для уменьшения расходов",
+            "recommendation": "Добавить в событие возврата идентификатор исходной операции покупки",
+            "passages": [
+              "recorded-purchases",
+              "refund-event",
+              "refund-rule"
+            ],
+            "evidence": [
+              {
+                "passage": "refund-rule",
+                "quote": "Возврат уменьшает расходы месяца исходной покупки независимо от даты возврата."
+              },
+              {
+                "passage": "refund-event",
+                "quote": "Для возврата процессинг передаёт идентификатор карты, идентификатор операции возврата, дату и сумму возврата."
+              },
+              {
+                "passage": "recorded-purchases",
+                "quote": "Для проведённой покупки сервис хранит идентификатор карты, идентификатор операции, месяц покупки и сумму."
+              }
+            ]
+          }
+        }
+      ],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    },
+    {
+      "case": "official_amount_response_type",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": [],
+      "individual_review_passage": "response-field",
+      "individual_review_passage_reviewed": true,
+      "control_passed": true
+    },
+    {
+      "case": "official_resolved_purchase_trigger",
+      "candidate_metrics": {
+        "raw_candidate_count": 0,
+        "grounded_candidate_count": 0,
+        "ungrounded_candidate_count": 0,
+        "overlapping_evidence_candidate_count": 0,
+        "merged_candidate_count": 0
+      },
+      "verified_finding_count": 0,
+      "accepted_findings": [],
+      "issues": [],
+      "unexpected_findings": [],
+      "rejected_candidates": []
+    }
+  ]
+}

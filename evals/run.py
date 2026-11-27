@@ -23,8 +23,10 @@ if str(ROOT) not in sys.path:
 
 from requirements_validator.aggregation import FindingsAggregator  # noqa: E402
 from requirements_validator.extractor import RequirementsExtractor  # noqa: E402
-from requirements_validator.gemini import GeminiClient, GeminiSettings, LLMError  # noqa: E402
+from requirements_validator.gemini import GeminiClient, GeminiSettings  # noqa: E402
+from requirements_validator.mistral import REASONING_EFFORT, MistralClient, MistralSettings  # noqa: E402
 from requirements_validator.models import Anchor, ParsedDocument, QualityCriterion, ReviewResult, SourceBlock  # noqa: E402
+from requirements_validator.ports import LLMError  # noqa: E402
 from requirements_validator.reviewers import (  # noqa: E402
     INDIVIDUAL_BATCH_SIZE, CrossRequirementReviewer, IndividualReviewer, ProposedFinding, SpecificationReview,
 )
@@ -222,12 +224,16 @@ def score(case: EvalCase, observed: list[ObservedFinding], rejected: list[dict[s
     }
 
 
-def _live_settings() -> GeminiSettings:
+def _live_env() -> dict[str, str]:
     # Match the application CLI: cwd/.env first, then process variables win.
     file_env = dotenv_values(Path.cwd() / ".env", encoding="utf-8-sig", interpolate=False)
     env = {key: value for key, value in file_env.items() if value is not None}
     env.update(os.environ)
-    return GeminiSettings.from_env(env)
+    return env
+
+
+def _live_settings() -> GeminiSettings:
+    return GeminiSettings.from_env(_live_env())
 
 
 def _sanitized_provider_error(exc: LLMError) -> dict[str, str]:
@@ -237,10 +243,20 @@ def _sanitized_provider_error(exc: LLMError) -> dict[str, str]:
     return {"type": type(exc).__name__, "message": message[:500]}
 
 
-def run_live(cases: tuple[EvalCase, ...], *, compare_dependencies: bool = False) -> tuple[dict[str, object], bool]:
-    settings = _live_settings()
+def run_live(cases: tuple[EvalCase, ...], *, compare_dependencies: bool = False,
+             provider: str = "gemini") -> tuple[dict[str, object], bool]:
+    if provider == "mistral":
+        settings = MistralSettings.from_env(_live_env())
+        mistral = MistralClient(settings)
+        client = mistral
+    elif provider == "gemini":
+        settings = _live_settings()
+        mistral = None
+        client = GeminiClient(settings)
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
     results = []
-    with GeminiClient(settings) as llm:
+    with client as llm:
         extractor = RequirementsExtractor(llm)
         individual_reviewer = IndividualReviewer(llm)
         reviewer = CrossRequirementReviewer(llm)
@@ -333,12 +349,16 @@ def run_live(cases: tuple[EvalCase, ...], *, compare_dependencies: bool = False)
     }
     if interrupted is not None:
         report["interruption"] = interrupted
+    if mistral is not None:
+        report.update(provider="mistral", reasoning_effort=REASONING_EFFORT, usage=dict(mistral.usage))
     return report, complete
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Requirements-validator semantic regression eval")
     parser.add_argument("--mode", choices=("check", "live"), default="check")
+    parser.add_argument("--provider", choices=("gemini", "mistral"), default="gemini",
+                        help="Model provider for live runs (default: gemini)")
     parser.add_argument("--compare-dependencies", action="store_true",
                         help="In live mode, also verify the same candidates without the dedicated dependency pass.")
     selection = parser.add_mutually_exclusive_group()
@@ -374,7 +394,9 @@ def main() -> int:
             "note": "No model was called; this is not a semantic quality result.",
         }
     else:
-        report, complete = run_live(selected, compare_dependencies=args.compare_dependencies)
+        if args.provider == "mistral" and not _live_env().get("MISTRAL_API_KEY", "").strip():
+            parser.error("MISTRAL_API_KEY is required for live Mistral runs. Set it in the process or .env.")
+        report, complete = run_live(selected, compare_dependencies=args.compare_dependencies, provider=args.provider)
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     if args.output:
         args.output.write_text(rendered + "\n", encoding="utf-8")

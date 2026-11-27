@@ -120,9 +120,9 @@ def cli_env(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("extension", ["md", "pdf"])
-@pytest.mark.parametrize("interrupted", [False, True])
+@pytest.mark.parametrize("failure", [None, "provider", "interrupt"])
 def test_cli_full_mocked_pipeline(
-    cli_env, monkeypatch, capsys, llm, batch_assessments, extension, interrupted, skipped_comparisons, skipped_relations,
+    cli_env, monkeypatch, capsys, llm, batch_assessments, extension, failure, skipped_comparisons, skipped_relations,
 ):
     src = cli_env / f"input.{extension}"
     output = cli_env / "report.md"
@@ -164,7 +164,9 @@ def test_cli_full_mocked_pipeline(
         if schema is DependencyReview:
             return DependencyReview(dependency_gaps=())
         if schema is SpecificationReview:
-            if interrupted and calls == [Extraction, IndividualReviews, SpecificationReview]:
+            if failure and calls == [Extraction, IndividualReviews, SpecificationReview]:
+                if failure == "interrupt":
+                    raise KeyboardInterrupt
                 raise LLMError("HTTP 429. Gemini requested a retry after 48703s.")
             req = data["requirements"][0]
             candidate = {
@@ -192,32 +194,46 @@ def test_cli_full_mocked_pipeline(
 
     llm.generate.side_effect = respond
     monkeypatch.setattr(cli, "GeminiClient", lambda settings: nullcontext(llm))
-    args = ["--input", str(src), "--output", str(output)]
-    if interrupted:
+    archived = cli_env / "analysis.json"
+    args = ["--input", str(src), "--output", str(output), "--analysis-output", str(archived)]
+    if failure:
         output.write_text("previous report", encoding="utf-8")
-        assert cli.main(args) == 1
-        assert "Progress saved" in capsys.readouterr().err
+        assert cli.main(args) == (130 if failure == "interrupt" else 1)
+        stderr = capsys.readouterr().err
+        assert "Progress saved" in stderr and "Traceback" not in stderr
         assert output.read_text(encoding="utf-8") == "previous report"
         assert calls == [Extraction, IndividualReviews, SpecificationReview]
         calls.clear()
     assert cli.main(args) == 0
+    stderr = capsys.readouterr().err
+    assert [line[:6] for line in stderr.splitlines() if line.startswith("Part ")] == [
+        f"Part {number}" for number in range(1, 6)
+    ]
+    assert "Dividing file into source blocks" in stderr and "Processing source blocks" in stderr
+    assert "\x1b" not in stderr
     rendered = output.read_text(encoding="utf-8")
     assert calls == [
-        *([] if interrupted else [Extraction, IndividualReviews]), SpecificationReview, DependencyReview,
+        *([] if failure else [Extraction, IndividualReviews]), SpecificationReview, DependencyReview,
         *map(type, skipped_comparisons), RelationReviews, QuoteRepairs, Verdicts, QuestionDrafts,
     ]
     assert "test-tag" in rendered and "Высокая серьёзность — 1" in rendered
     assert "Неподтверждённых замечаний — 1" in rendered
-    confirmed = rendered.split("## Подтверждённые дефекты", 1)[1].split("## Вопросы заинтересованным сторонам", 1)[0]
-    rejected = rendered.split("## Неподтверждённые замечания", 1)[1].split("## Сводка", 1)[0]
+    confirmed = rendered.split("## Проверка спецификации в целом", 1)[1].split("### Неподтверждённые замечания", 1)[0]
+    rejected = rendered.split("### Неподтверждённые замечания", 1)[1].split("## Сводка", 1)[0]
     assert "Неверная цитата" not in confirmed
     assert "Неверная цитата" in rejected and "Не подтверждено источником" in rejected
-    assert {line[4:] for line in rendered.splitlines() if line.startswith("### R-")} == set(extracted_ids)
+    assert {line.split()[1] for line in rendered.splitlines() if line.startswith("### R-")} == set(extracted_ids)
     assert rendered.count("**Однозначность**") == len(extracted_ids) == 2
-    assert all(f"| {req_id} |" in rendered for req_id in extracted_ids)
+    assert all(f"| [{req_id}](#unit-" in rendered for req_id in extracted_ids)
     assert "\\| текст" in rendered
     assert "При каком событии выдаётся чек?" in rendered and "От ответа зависит" in rendered
-    assert "Рекомендуется отложить" in rendered and ("стр. 2, P2" in rendered) == (extension == "pdf")
+    assert "До реализации или приёмки нужно" not in rendered
+    assert ("стр. 2" in rendered) == (extension == "pdf")
+    if extension == "md":
+        assert "Р-1 · строка 3, текст — строка 4" in rendered
+    archived_review = json.loads(archived.read_text(encoding="utf-8"))["review"]
+    assert len(archived_review["findings"]) == len(archived_review["rejected"]) == 1
+    assert archived_review["findings"][0]["id"] in confirmed
 
 
 def test_cli_error_messages_and_existing_output(cli_env, monkeypatch, capsys, llm):

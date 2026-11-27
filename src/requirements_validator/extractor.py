@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from typing import Literal
 
@@ -11,6 +12,7 @@ from .prompts import EXTRACTION_RULES
 from .ports import StructuredLLM, StructuredResponseError
 from .source import Anchor, EvidenceError, SourceIndex, contains, stable_id
 
+LOG = logging.getLogger(__name__)
 EXTRACTION_BATCH_CHARS = 5500
 HTTP_CONTRACT_FIELDS = {
     "rest type", "http method", "request method", "request url", "curl",
@@ -71,6 +73,8 @@ class RequirementsExtractor:
         coverage: list[CoverageRecord] = []
 
         def inventory(blocks: list[SourceBlock]) -> None:
+            LOG.info("Processing source blocks %d to %d of %d",
+                     len(coverage) + 1, len(coverage) + len(blocks), len(document.blocks))
             targets = {b.id for b in blocks}
             payload = {"title": document.title, "blocks": [b.model_dump() for b in blocks]}
             for attempt in range(2):
@@ -106,6 +110,8 @@ class RequirementsExtractor:
                     if attempt:
                         if len(blocks) == 1:
                             raise
+                        LOG.warning("Could not validate extraction for %d blocks. Retrying in smaller batches.",
+                                    len(blocks))
                         midpoint = len(blocks) // 2
                         inventory(blocks[:midpoint])
                         inventory(blocks[midpoint:])

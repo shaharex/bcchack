@@ -27,8 +27,9 @@ class AnalysisPipeline:
 
     def analyze(self, document: ParsedDocument) -> AnalysisRunResult:
         started_at = datetime.now(UTC)
+        LOG.info("Extracting requirements", extra={"stage": 2})
         requirements, coverage = self.extractor.extract_with_coverage(document)
-        LOG.info("Reviewing %d extracted requirements", len(requirements))
+        LOG.info("Reviewing %d extracted requirements", len(requirements), extra={"stage": 3})
         individual = {}
         for start in range(0, len(requirements), INDIVIDUAL_BATCH_SIZE):
             targets = requirements[start:start + INDIVIDUAL_BATCH_SIZE]
@@ -45,7 +46,7 @@ class AnalysisPipeline:
         proposals = cross.findings + dependencies.findings + focused.findings + relations.findings
         findings = self.cross.repair_quotes(document, requirements, proposals)
         cross = SpecificationReview(findings=findings)
-        LOG.info("Verifying finding evidence")
+        LOG.info("Verifying finding evidence", extra={"stage": 4})
         review = self.aggregator.aggregate(document, requirements, individual, cross)
         severities = None
         if self.severity is not None:
