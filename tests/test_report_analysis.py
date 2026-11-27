@@ -1,5 +1,10 @@
+import json
+import re
 from datetime import UTC, datetime
 
+from markdown_it import MarkdownIt
+
+from requirements_validator import __main__ as cli
 from requirements_validator.models import (
     REQUIREMENT_CRITERIA,
     AnalysisRunResult,
@@ -22,7 +27,7 @@ from requirements_validator.models import (
 from requirements_validator.report import MarkdownReportGenerator
 
 
-def test_report_renders_decision_details_without_filler_or_duplication():
+def example_result():
     rule = "For the same request return ALPHA or BETA."
     context = "The product note resolves this as ALPHA."
     document = ParsedDocument(
@@ -66,13 +71,13 @@ def test_report_renders_decision_details_without_filler_or_duplication():
         explanation="The scenario and outcomes are repeated here.",
         recommendation="Choose one response.",
         requirement_ids=(requirement.id,),
-        evidence=(alpha, beta),
+        evidence=(alpha, alpha, beta),
         scopes=("individual",),
         scenario=Scenario(
             description="The same request is sent twice.",
             expected_a="Return BETA.",
             expected_b="Return ALPHA.",
-            evidence_a=1,
+            evidence_a=2,
             evidence_b=0,
         ),
         impact=duplicate_impact,
@@ -99,7 +104,7 @@ def test_report_renders_decision_details_without_filler_or_duplication():
         proposed_quotes=("unverified proposal",),
         resolving_evidence=(citation("B2", context, "resolves this as ALPHA"),),
     )
-    result = AnalysisRunResult(
+    return AnalysisRunResult(
         document=document,
         started_at=datetime(2026, 11, 26, 12, 0, tzinfo=UTC),
         model="test-model",
@@ -118,24 +123,71 @@ def test_report_renders_decision_details_without_filler_or_duplication():
         ),
     )
 
+def test_report_renders_decision_details_without_filler_or_duplication():
+    result = example_result()
     rendered = MarkdownReportGenerator().render(result)
 
-    assert rendered.index("## Паспорт прогона") < rendered.index("## Резюме для принятия решения")
-    assert "| B1 | API → Responses | Проанализирован |" in rendered
-    pass_line, = [line for line in rendered.splitlines() if line.startswith("- Пройдено:")]
-    for criterion in REQUIREMENT_CRITERIA:
-        if criterion is not QualityCriterion.CONSISTENCY:
-            assert "**" in pass_line
+    headers = re.findall(r"^## (.+)$", rendered, re.M)
+    assert headers == [
+        "Паспорт прогона", "Резюме для принятия решения", "Карта требований", "Проверка каждого требования",
+        "Проверка спецификации в целом", "Соответствие стандартам", "Исполняемая проверка", "Сводка", "Итог",
+    ]
+    assert "| B1 | API → Responses | Проанализирован |" not in rendered
+    diagnostic = MarkdownReportGenerator(diagnostics=True).render(result)
+    assert "| B1 | API → Responses | Проанализирован |" in diagnostic
+    assert r"символы \[28, 33\)" in diagnostic
+    pass_line, = [line for line in rendered.splitlines() if line.startswith("- Дефектов не выявлено")]
     # Every passing criterion name is bold on one line.
     assert pass_line.count("**") == 2 * (len(REQUIREMENT_CRITERIA) - 1)
-    assert "Ожидаемый исход A (стр. 2, B1, символы [37, 41)) — Return BETA." in rendered
-    assert "Ожидаемый исход B (стр. 2, B1, символы [28, 33)) — Return ALPHA." in rendered
+    assert "- Return BETA. (Responses · стр. 2)" in rendered
+    assert "- Return ALPHA. (Responses · стр. 2)" in rendered
+    assert rendered.count("\nALPHA\n") == 1
     assert "The scenario and outcomes are repeated here." not in rendered
-    assert rendered.count(duplicate_impact) == 1
-    assert "- Требуется уточнение — да\n- Рекомендация — " in rendered
-    assert "### Проверенное основание: Possible product exception" in rendered
-    assert "стр. 3, B2, символы [17, 39)" in rendered
+    assert rendered.count(result.review.findings[0].impact) == 1
+    assert "**Что уточнить** — Choose one response." in rendered
+    assert "#### D-01 — Response conflict" in rendered and "F-1" in rendered
+    assert "Проверенное основание — Notes · стр. 3." in rendered
     assert "resolves this as ALPHA" in rendered
     assert "unverified proposal" not in rendered
-    assert "Влияние — отдельно не установлено" not in rendered
-    assert "Оценки отсутствуют" not in rendered
+    assert "До реализации или приёмки нужно" not in rendered
+    assert "Продуктовых требований — 0" in rendered and "Других единиц анализа — 1" in rendered
+    assert set(re.findall(r"\]\(#([^)]+)\)", rendered)) == set(re.findall(r'<a id="([^"]+)"', rendered))
+    parsed = MarkdownIt("commonmark", {"html": True}).enable("table").parse(rendered)
+    # The requirement map and the standards compliance matrix.
+    assert sum(token.type == "table_open" for token in parsed) == 2
+    assert sum(token.type == "fence" for token in parsed) == 4
+
+
+def test_saved_analysis_renders_without_a_provider_and_validates_citations(tmp_path, monkeypatch):
+    result = example_result()
+    status_by_criterion = {
+        QualityCriterion.COMPLETENESS: "not_assessable",
+        QualityCriterion.VERIFIABILITY: "not_checked",
+        QualityCriterion.ATOMICITY: "not_applicable",
+    }
+    evaluations = tuple(
+        row.model_copy(update={"outcome": status_by_criterion[row.criterion], "rationale": "Причина оценки."})
+        if row.criterion in status_by_criterion else row
+        for row in result.review.evaluations
+    )
+    result = result.model_copy(update={"review": result.review.model_copy(update={"evaluations": evaluations})})
+    saved, output = tmp_path / "existing.json", tmp_path / "report.md"
+    saved.write_text(result.model_dump_json(), encoding="utf-8")
+
+    def unexpected_client(*args):
+        raise AssertionError("Offline render must not load provider settings")
+
+    monkeypatch.setattr(cli, "dotenv_values", unexpected_client)
+    args = ["--analysis-input", str(saved), "--output", str(output)]
+    assert cli.main(args) == 0
+    rendered = output.read_text(encoding="utf-8")
+    assert result.started_at.isoformat() in rendered and "Дата формирования отчёта" in rendered
+    assert "**Полнота** · Недостаточно оснований для вывода" in rendered
+    assert "**Проверяемость** · Не проверено" in rendered
+    assert "**Атомарность** · Не применимо" in rendered
+    assert "Незавершённых оценок (элемент × критерий) — 2" in rendered
+    broken = result.model_dump(mode="json")
+    broken["review"]["findings"][0]["evidence"][0]["location"]["start"] -= 1
+    saved.write_text(json.dumps(broken), encoding="utf-8")
+    assert cli.main(args) == 1
+    assert output.read_text(encoding="utf-8") == rendered

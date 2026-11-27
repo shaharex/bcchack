@@ -137,12 +137,13 @@ class EvidenceReference(Citation):
 
 Scope = Literal["individual", "specification"]
 Outcome = Literal["pass", "fail", "not_assessable"]
+EvaluationOutcome = Literal["pass", "fail", "not_assessable", "not_applicable", "not_checked"]
 
 
 class CriterionEvaluation(Schema):
     requirement_id: Text
     criterion: QualityCriterion
-    outcome: Outcome
+    outcome: EvaluationOutcome
     rationale: Text
     finding_ids: tuple[Text, ...]
 

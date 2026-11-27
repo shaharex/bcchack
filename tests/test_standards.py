@@ -175,10 +175,11 @@ def test_document_finding_reaches_compliance_matrix(
     assert unambiguous.status == "pass" and "Требований: 3" in unambiguous.basis
 
     rendered = MarkdownReportGenerator().render(result)
-    section = rendered.split("## Соответствие стандартам", 1)[1].split("## Покрытие документа", 1)[0]
-    assert "| IEEE Std 830-1998, п. 4.3.5 | Ранжированность (Ranked for importance and/or stability) | Не соответствует |" in section
+    section = rendered.split("## Соответствие стандартам", 1)[1].split("## Исполняемая проверка", 1)[0]
+    assert ("| IEEE Std 830-1998, п. 4.3.5 | Ранжированность (Ranked for importance and/or stability) "
+            "| Не соответствует | Оценка документа. | [S-01](#") in section
     assert "ISO/IEC/IEEE 29148:2018, п. 5.2.6" in section and "Измеримые показатели документа" in section
-    assert "Свойства стандартов с нарушениями | 1 из 22" in rendered
+    assert "Свойств стандартов с нарушениями — 1 из 22" in rendered
 
     exported = to_report(result, Path("spec.md"))
     row = next(item for item in exported.compliance if item.clause == "4.3.5")

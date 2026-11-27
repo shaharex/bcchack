@@ -68,9 +68,11 @@ def _requirement_row(prop: StandardProperty, result: AnalysisRunResult) -> Compl
         return ComplianceRow(prop, "not_run", "Требования не извлечены.", ())
     counts = Counter(e.outcome for e in rows)
     ids = tuple(sorted({fid for e in rows for fid in e.finding_ids}))
-    status: Status = "fail" if counts["fail"] else "not_assessable" if counts["not_assessable"] else "pass"
+    unresolved = counts["not_assessable"] + counts["not_checked"]
+    status: Status = ("fail" if counts["fail"] else "not_assessable" if unresolved
+                      else "pass" if counts["pass"] else "not_run")
     basis = (f"Требований: {len(rows)}; соответствуют — {counts['pass']}, нарушения — {counts['fail']}, "
-             f"нельзя оценить — {counts['not_assessable']}.")
+             f"нельзя оценить — {unresolved}, неприменимо — {counts['not_applicable']}.")
     return ComplianceRow(prop, status, basis, ids)
 
 

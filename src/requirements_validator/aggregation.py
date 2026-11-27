@@ -174,7 +174,7 @@ class FindingsAggregator:
                 return verified
         if len(findings) == 1:
             raise StructuredResponseError("evidence checker must return exactly one grounded verdict per candidate")
-        LOG.warning("Gemini returned invalid verdicts for %d candidates. Retrying in smaller batches.", len(findings))
+        LOG.warning("The model returned invalid verdicts for %d candidates. Retrying in smaller batches.", len(findings))
         midpoint = len(findings) // 2
         return self._verify_batch(document, findings[:midpoint], start, compared_in) | self._verify_batch(
             document, findings[midpoint:], start + midpoint, compared_in,

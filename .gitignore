@@ -27,6 +27,7 @@ dist/
 # Local validator and evaluation output
 .requirements-report-*
 .*.gemini-checkpoint.sqlite3*
+.*.groq-checkpoint.sqlite3*
 /eval-result.json
 /official-regressions.json
 

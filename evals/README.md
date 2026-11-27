@@ -29,6 +29,17 @@ python -m evals.run --mode check --suite official-regressions
 python -m evals.run --mode live --suite official-regressions --output official-regressions.json
 ```
 
+To run the same cases with Mistral Large 4 at high reasoning effort, set
+`MISTRAL_API_KEY` in the repository-root `.env` or the process environment.
+
+```powershell
+python -m evals.run --mode live --provider mistral --suite official-regressions --output reports/official_regressions_mistral_high.json
+```
+
+Both providers use the same case inputs, prompts, response schemas, quote checks,
+and scorer. Later requests can differ because they consume previous model outputs.
+The Mistral result also records reasoning effort and reported API token usage.
+
 The amount-type control also runs extraction and individual review. Its `control_passed`
 field requires the response field to have been reviewed and zero confirmed
 findings. `individual_review_passage_reviewed` distinguishes a clean result from an
@@ -73,7 +84,7 @@ and `--case response_type_conflicts_with_example`. The first expects a clean res
 when the response matches its schema. The second expects a finding when a response
 example gives a string for a field declared as an integer.
 
-The live mode uses `GeminiClient`, `CrossRequirementReviewer`, and `FindingsAggregator`,
+The live mode uses the selected provider, `CrossRequirementReviewer`, and `FindingsAggregator`,
 so it exercises the same broad review, dependency tracing, focused scenarios
 and source-passage comparisons as the application. It also exercises exact source
 grounding, one repair attempt for invalid cross-review quotes, final evidence
