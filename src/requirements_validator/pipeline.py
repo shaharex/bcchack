@@ -10,6 +10,7 @@ from .language_lint import lint
 from .extractor import RequirementsExtractor
 from .models import AnalysisRunResult, ParsedDocument
 from .ports import ClarificationGenerator, DocumentParser, ReportGenerator, SeverityClassifier, StructuredLLM
+from .rule_probes import RuleProbes
 from .reviewers import INDIVIDUAL_BATCH_SIZE, CrossRequirementReviewer, IndividualReviewer, SpecificationReview
 
 LOG = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class AnalysisPipeline:
         self.cross = CrossRequirementReviewer(llm)
         self.aggregator = FindingsAggregator(llm)
         self.compliance = DocumentComplianceReviewer(llm)
+        self.probes = RuleProbes(llm)
         self.executable_llm = executable_llm
         self.executable = ExecutableReviewer(executable_llm or llm) if executable else None
         self.llm = llm
@@ -51,6 +53,8 @@ class AnalysisPipeline:
         focused = self.cross.review_focused(document, requirements)
         LOG.info("Tracing relationships between source passages")
         relations = self.cross.review_relations(document, requirements)
+        LOG.info("Probing output limits against overriding rules and reads against the documented operations")
+        probes = self.probes.review(document, requirements)
         metrics = measure(document, requirements)
         LOG.info("Assessing the document against ISO/IEC/IEEE 29148 and IEEE 830")
         compliance = self.compliance.review(document, requirements, metrics)
@@ -59,7 +63,7 @@ class AnalysisPipeline:
         execution = (self.executable.review(document, requirements) if self.executable is not None
                      else ExecutionReview(SpecificationReview(findings=()), None))
         proposals = (cross.findings + dependencies.findings + focused.findings + relations.findings
-                     + compliance.proposals().findings + lint(document, requirements)
+                     + probes + compliance.proposals().findings + lint(document, requirements)
                      + execution.findings.findings)
         findings = self.cross.repair_quotes(document, requirements, proposals)
         cross = SpecificationReview(findings=findings)

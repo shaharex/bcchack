@@ -13,6 +13,7 @@ from requirements_validator.parsers import MarkdownParser
 from requirements_validator.pipeline import AnalysisPipeline
 from requirements_validator.ports import StructuredResponseError
 from requirements_validator.report import MarkdownReportGenerator
+from requirements_validator.rule_probes import CapVerdicts, ReadVerdicts
 from requirements_validator.reviewers import (
     CrossRequirementReviewer, DependencyReview, FocusedReview, LifecycleReview, RelationPlan, RelationReviews,
     ScenarioConflict, SpecificationReview,
@@ -156,6 +157,8 @@ def test_focused_scenario_reaches_report(
             return empty_executable_model
         if schema is LifecycleReview:
             return LifecycleReview(rationale="Другой сценарий.", outcome="not_applicable", checks=())
+        if schema in (CapVerdicts, ReadVerdicts):
+            return schema(rationale="Другой сценарий.", verdicts=())
         if schema is FocusedReview:
             assert json.loads(payload)["document"] == card_spec.model_dump(mode="json")
             if not all(selector in instruction for selector in prompt_family):
@@ -215,6 +218,8 @@ def test_matching_get_and_curl_cannot_produce_focused_method_conflict(
             return empty_executable_model
         if schema is LifecycleReview:
             return LifecycleReview(rationale="Другой сценарий.", outcome="not_applicable", checks=())
+        if schema in (CapVerdicts, ReadVerdicts):
+            return schema(rationale="Другой сценарий.", verdicts=())
         assert schema is FocusedReview  # No candidate should reach verification.
         if "actual HTTP verb alone" not in instruction:
             return FocusedReview(outcome="not_assessable", rationale="Другой сценарий.", conflicts=())

@@ -323,6 +323,14 @@ in Russian in reason, mark whether a stakeholder decision is needed, and classif
 impact as blocks_behavior (important outcome cannot be selected/tested),
 needs_decision (material ambiguity with bounded impact), or localized (documentation).
 If the defect is established but its impact cannot yet be ranked, use uncertain.
+When one rule caps how often an output may occur in a scope and period and another
+rule requires that output "regardless of" prior history, build the sequence where the
+capped output already happened and the override condition then occurs. If no passage
+states which rule takes precedence, the contradiction is supported; it blocks a
+deterministic test of that sequence. A save operation whose response echoes the
+submitted values does not provide a read of the current stored values to a consumer
+that must read them before saving; if no documented operation returns them, the gap
+is supported.
 Necessity, correctness, conformance, comprehensibility, validatability, ranking,
 modifiability and traceability are required properties under ISO/IEC/IEEE 29148 and
 IEEE 830, not optional advice. Support such a candidate when the cited source shows
